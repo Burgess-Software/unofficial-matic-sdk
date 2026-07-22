@@ -3,7 +3,7 @@
 An async Python SDK and command-line client for an owner-controlled Matic robot.
 
 > [!WARNING]
-> This project is unofficial, unaffiliated with Matic Robots or Matician, and
+> This project is unofficial, unaffiliated with Matic Robots, and
 > based on independent protocol research. It is alpha software for hardware
 > you own. Commands can move the robot or change persistent settings.
 
