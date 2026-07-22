@@ -22,7 +22,7 @@ gated command surface.
 | Read-only Hermes collections | 43 targets accepted by a live robot |
 | RGB, integrated, semantic and coverage maps | Verified offline from live captures |
 | Sparse colored surface voxels | Verified offline from live captures |
-| Direct laptop-originated commands | Typed and guarded, but wire codecs fail closed pending proof |
+| Direct laptop-originated commands | Stop delivery live-verified; all other commands fail closed pending command-specific proof |
 | Portal-backed remote transport | Experimental and not currently reliable |
 | Firmware, root, filesystem or SSH access | Not available |
 
@@ -120,13 +120,40 @@ asyncio.run(main())
 ```
 
 Command intent APIs already enforce protocol, TLS, motion, and hazardous-action
-guards. The default registry does not yet contain a proven command encoder, so
-attempted sends fail before network I/O. There is no unrestricted public
-raw-command escape hatch.
+guards. The stationary Stop command has a proven encoder and Hermes envelope.
+All other commands still fail before network I/O. There is no unrestricted
+public raw-command escape hatch.
+
+“Wire codec” means the code that serializes a typed command into the exact
+protobuf bytes and channel envelope the robot accepts. “Fail closed pending
+proof” means the SDK raises an error without opening a network stream whenever
+those bytes, the target, or the command-specific behavior have not been proven;
+it never guesses field numbers or sends a plausible-looking payload.
+
+Stop was sent once through this SDK to an authenticated robot on 2026-07-22.
+Hermes returned one `ChannelResponse` and gRPC status 0. The robot was already
+docked and remained docked, so this verifies transport delivery without
+claiming a new physical state transition.
 
 ```python
-# With no observed protocol configured, this fails before any command I/O.
-await robot.commands.stop()
+import asyncio
+
+from matic_sdk import MaticClient, MaticConfig, TlsConfig
+
+
+async def stop_robot() -> None:
+    # Explicitly select the observed protocol before enabling the verified codec.
+    config = MaticConfig(
+        host="ROBOT_HOST",
+        command_protocol_version=25,
+        tls=TlsConfig.pinned("VERIFIED_CERTIFICATE_SHA256"),
+    )
+    async with await MaticClient.connect_from_store("living-room", config) as robot:
+        receipt = await robot.commands.stop()
+        assert receipt.transport_acknowledged
+
+
+asyncio.run(stop_robot())
 ```
 
 ## Development

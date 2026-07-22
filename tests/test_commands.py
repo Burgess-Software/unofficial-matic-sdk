@@ -40,6 +40,8 @@ from matic_sdk.protocol.commands import (
     UnsupportedProtocolVersion,
     encode_command,
 )
+from matic_sdk.protocol.grpc import GrpcProtocolError, GrpcResponse
+from matic_sdk.protocol.wire import encode_bytes_field
 from matic_sdk.safety import (
     MOTION_CONFIRMATION,
     UNSAFE_CONFIRMATION,
@@ -47,6 +49,12 @@ from matic_sdk.safety import (
     MotionControls,
     UnsafeControlRequired,
     UnsafeControls,
+)
+from matic_sdk.transport.commands import (
+    HERMES_TARGET_HEADER,
+    SEND_TO_CHANNEL_PATH,
+    _encode_channel_request,
+    _HermesCommandTransport,
 )
 
 
@@ -129,11 +137,13 @@ def test_registry_documents_every_recovered_command_family() -> None:
     assert expected_keys <= COMMAND_REGISTRY.specs.keys()
 
 
-def test_default_registry_has_no_guessed_wire_codecs() -> None:
-    assert all(not spec.codec_available for spec in COMMAND_SPECS)
+def test_default_registry_exposes_only_verified_stop_codec() -> None:
+    available = {spec.key for spec in COMMAND_SPECS if spec.codec_available}
+    assert available == {"user.stop"}
+    assert encode_command(UserCommand(UserAction.STOP), protocol_version=25) == (
+        EncodedCommand(bytes.fromhex("7a040a022200"), "user_command")
+    )
     with pytest.raises(UnsupportedCommandCodec, match="no evidence-backed"):
-        encode_command(UserCommand(UserAction.STOP), protocol_version=25)
-    with pytest.raises(UnsupportedCommandCodec, match="ChannelRequest"):
         encode_command(JoystickCommand(0.1, 0.2), protocol_version=25)
 
 
@@ -147,10 +157,15 @@ def test_recovered_user_payloads_remain_offline_evidence() -> None:
     }
     for key, payload_hex in expected.items():
         spec = COMMAND_REGISTRY.spec_for(key)
-        assert spec.evidence_level is CodecEvidenceLevel.PAYLOAD_VERIFIED
+        expected_level = (
+            CodecEvidenceLevel.WIRE_VERIFIED
+            if key == "user.stop"
+            else CodecEvidenceLevel.PAYLOAD_VERIFIED
+        )
+        assert spec.evidence_level is expected_level
         assert spec.known_payload == bytes.fromhex(payload_hex)
         assert spec.known_hermes_target == "user_command"
-        assert not spec.codec_available
+        assert spec.codec_available is (key == "user.stop")
 
     joystick = COMMAND_REGISTRY.spec_for("user.joystick")
     assert joystick.known_hermes_target == "user_command"
@@ -175,11 +190,104 @@ def test_wifi_passphrase_is_not_exposed_by_repr() -> None:
 
 
 def test_registry_refuses_codec_without_wire_verified_evidence() -> None:
+    unverified_stop = replace(
+        COMMAND_REGISTRY.spec_for("user.stop"),
+        evidence_level=CodecEvidenceLevel.PAYLOAD_VERIFIED,
+    )
     with pytest.raises(ValueError, match="WIRE_VERIFIED"):
         CommandRegistry(
-            COMMAND_SPECS,
+            (unverified_stop,),
             codecs={"user.stop": SyntheticStopCodec()},
         )
+
+
+def test_stop_channel_request_matches_golden_wire_vector() -> None:
+    command = encode_command(UserCommand(UserAction.STOP), protocol_version=25)
+    assert _encode_channel_request(command).hex() == (
+        "0a0c757365725f636f6d6d616e6412067a040a022200"
+    )
+
+
+def test_stop_codec_rejects_unverified_session_id() -> None:
+    with pytest.raises(ValueError, match="session_id is not wire-verified"):
+        encode_command(
+            UserCommand(UserAction.STOP, session_id="synthetic"),
+            protocol_version=25,
+        )
+
+
+class FakeCommandH2:
+    def __init__(self, messages: tuple[bytes, ...] = (b"",)) -> None:
+        self.messages = messages
+        self.calls: list[tuple[str, bytes, object, bool]] = []
+
+    async def unary(
+        self,
+        path: str,
+        payload: bytes,
+        *,
+        metadata: object,
+        mutating: bool,
+    ) -> GrpcResponse:
+        self.calls.append((path, payload, metadata, mutating))
+        return GrpcResponse(self.messages, (), (("grpc-status", "0"),))
+
+
+@pytest.mark.asyncio
+async def test_hermes_transport_sends_one_verified_stop_request() -> None:
+    h2 = FakeCommandH2()
+    transport = _HermesCommandTransport(h2)  # type: ignore[arg-type]
+    command = encode_command(UserCommand(UserAction.STOP), protocol_version=25)
+
+    acknowledgement = await transport.send_channel(command)
+
+    assert acknowledgement.status is TransportAckStatus.ACKNOWLEDGED
+    assert acknowledgement.code == "grpc-status-0"
+    assert h2.calls == [
+        (
+            SEND_TO_CHANNEL_PATH,
+            bytes.fromhex("0a0c757365725f636f6d6d616e6412067a040a022200"),
+            ((HERMES_TARGET_HEADER, "user_command"),),
+            True,
+        )
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("messages", [(), (b"", b"")])
+async def test_hermes_transport_rejects_invalid_response_shape(
+    messages: tuple[bytes, ...],
+) -> None:
+    transport = _HermesCommandTransport(FakeCommandH2(messages))  # type: ignore[arg-type]
+    command = encode_command(UserCommand(UserAction.STOP), protocol_version=25)
+
+    with pytest.raises(GrpcProtocolError):
+        await transport.send_channel(command)
+
+
+@pytest.mark.asyncio
+async def test_hermes_transport_accepts_nonempty_response_value() -> None:
+    response_value = b"synthetic-response-value"
+    transport = _HermesCommandTransport(  # type: ignore[arg-type]
+        FakeCommandH2((encode_bytes_field(1, response_value),))
+    )
+    command = encode_command(UserCommand(UserAction.STOP), protocol_version=25)
+
+    acknowledgement = await transport.send_channel(command)
+
+    assert acknowledgement.status is TransportAckStatus.ACKNOWLEDGED
+    assert "synthetic-response-value" not in repr(acknowledgement)
+
+
+@pytest.mark.asyncio
+async def test_hermes_transport_rejects_malformed_channel_response() -> None:
+    transport = _HermesCommandTransport(  # type: ignore[arg-type]
+        FakeCommandH2((b"\x0a\x05bad",))
+    )
+    command = encode_command(UserCommand(UserAction.STOP), protocol_version=25)
+
+    with pytest.raises(ValueError, match="truncated"):
+        await transport.send_channel(command)
 
 
 @pytest.mark.asyncio
@@ -205,6 +313,22 @@ async def test_client_exposes_fail_closed_command_executor() -> None:
 
     with pytest.raises(UnsupportedProtocolVersion):
         await client.commands.stop()
+
+
+@pytest.mark.asyncio
+async def test_client_sends_wire_verified_stop_through_hermes() -> None:
+    config = MaticConfig(
+        "robot.invalid",
+        command_protocol_version=25,
+        tls=TlsConfig.pinned("00" * 32),
+    )
+    h2 = FakeCommandH2()
+    client = MaticClient(config, h2, credentials=None)  # type: ignore[arg-type]
+
+    receipt = await client.commands.stop()
+
+    assert receipt.transport_acknowledged
+    assert len(h2.calls) == 1
 
 
 @pytest.mark.asyncio

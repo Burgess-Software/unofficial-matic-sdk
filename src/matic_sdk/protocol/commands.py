@@ -1,11 +1,11 @@
 """Fail-closed command codec registry for Hermes protocol version 25.
 
-Static analysis recovered command type names, five complete inner
-``UserCommand`` payloads, and, for joystick control, field names and scalar
-types. It did *not* establish the ``ChannelRequest`` envelope, the
-``hermes-target`` value, or acknowledgement semantics. Consequently the
-default registry documents the surface but deliberately contains no transport
-encoders. Adding a codec requires positive end-to-end wire evidence; callers
+Static analysis recovered command type names and five complete inner
+``UserCommand`` payloads. Independent protocol reconstruction, official-client
+evidence, and live testing established the surrounding ``ChannelRequest`` wire
+shape and response semantics for Stop. The default registry therefore exposes
+only that stationary command. Every other command remains unavailable until
+its command-specific bytes and behavior have equivalent evidence; callers
 never get a guessing or raw-payload escape hatch.
 """
 
@@ -33,6 +33,7 @@ from matic_sdk.models.control import (
     ScheduleCommand,
     SettingsCommand,
     TelemetryCommand,
+    UserAction,
     UserCommand,
     WifiCommand,
 )
@@ -67,7 +68,7 @@ class UnsupportedCommandCodec(CommandProtocolError):
     def __init__(self, command_key: str) -> None:
         super().__init__(
             f"{command_key!r} has no evidence-backed wire codec; the protobuf "
-            "tags, ChannelRequest envelope, or channel target remain unresolved"
+            "payload or command-specific semantics remain unresolved"
         )
         self.command_key = command_key
 
@@ -141,6 +142,8 @@ def _spec(
     unsafe: bool = False,
     fields: tuple[str, ...] = (),
     payload: bytes | None = None,
+    wire_verified: bool = False,
+    evidence: str | None = None,
 ) -> CommandSpec:
     return CommandSpec(
         key=key,
@@ -149,12 +152,16 @@ def _spec(
         model_type=model_type,
         native_type=native_type,
         evidence_level=(
-            CodecEvidenceLevel.PAYLOAD_VERIFIED
-            if payload is not None
+            CodecEvidenceLevel.WIRE_VERIFIED
+            if wire_verified
             else (
-                CodecEvidenceLevel.STATIC_FIELDS
-                if fields
-                else CodecEvidenceLevel.STATIC_TYPE
+                CodecEvidenceLevel.PAYLOAD_VERIFIED
+                if payload is not None
+                else (
+                    CodecEvidenceLevel.STATIC_FIELDS
+                    if fields
+                    else CodecEvidenceLevel.STATIC_TYPE
+                )
             )
         ),
         known_fields=fields,
@@ -163,11 +170,33 @@ def _spec(
             USER_COMMAND_HERMES_TARGET if family is CommandFamily.USER else None
         ),
         requires_unsafe_controls=unsafe,
+        evidence=(
+            evidence
+            if evidence is not None
+            else "Matic Android 1.151.0 generated bindings/libmegazord.so"
+        ),
     )
 
 
-# This inventory is intentionally explicit.  It is useful documentation even
-# while every entry remains fail-closed at the wire boundary.
+@dataclass(frozen=True, slots=True)
+class _VerifiedUserCommandCodec:
+    """Exact encoder for one independently verified no-argument variant."""
+
+    action: UserAction
+    payload: bytes
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        if not isinstance(command, UserCommand) or command.action is not self.action:
+            raise TypeError(f"codec expects UserCommand({self.action.value})")
+        if command.session_id is not None:
+            raise ValueError(
+                f"{command.command_key} with session_id is not wire-verified"
+            )
+        return EncodedCommand(self.payload, USER_COMMAND_HERMES_TARGET)
+
+
+# This inventory is intentionally explicit. It remains useful documentation
+# even though all entries except the stationary Stop command are fail-closed.
 COMMAND_SPECS: tuple[CommandSpec, ...] = (
     _spec(
         "user.stop",
@@ -176,6 +205,11 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         UserCommand,
         "UserCommand.Stop",
         payload=bytes.fromhex("7a040a022200"),
+        wire_verified=True,
+        evidence=(
+            "Matic Android 1.151.0 native symbols and official-client logs; "
+            "SDK live delivery verified 2026-07-22"
+        ),
     ),
     _spec(
         "user.stay_put",
@@ -762,7 +796,14 @@ class CommandRegistry:
         return encoded
 
 
-COMMAND_REGISTRY = CommandRegistry()
+COMMAND_REGISTRY = CommandRegistry(
+    codecs={
+        "user.stop": _VerifiedUserCommandCodec(
+            UserAction.STOP,
+            bytes.fromhex("7a040a022200"),
+        )
+    }
+)
 
 
 def encode_command(

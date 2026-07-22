@@ -31,7 +31,11 @@ keeps the HTTP/2 request side open, and acknowledges returned sequence IDs.
 
 `SendToChannel` accepts a client stream and returns one response. The official
 client normally sends one `ChannelRequest`, half-closes that stream, and awaits
-the response. Command and collection streams can share the HTTP/2 connection.
+the response. `ChannelRequest` carries `string channel_name = 1` and
+`bytes value = 2`; the channel name is duplicated in `hermes-target` metadata.
+The native response type is `ChannelResponse { bytes value = 1; }`, whose
+default empty value serializes as an empty protobuf message. Command and
+collection streams can share the HTTP/2 connection.
 
 ## Compatibility
 
@@ -43,9 +47,9 @@ provide a version observed from that robot before even a complete codec can run.
 
 Five complete inner `UserCommand` protobuf bodies have been recovered from the
 native conversion and Prost encoder paths. They are retained as offline golden
-evidence, along with the exact `user_command` Hermes target. They do not become
-sendable until the surrounding `ChannelRequest` and acknowledgement behavior
-are independently established.
+evidence, along with the exact `user_command` Hermes target. The surrounding
+`ChannelRequest` and acknowledgement behavior are now established, but only
+Stop has enough command-specific evidence to be sendable.
 
 This project contains reconstructed protocol descriptions and synthetic test
 vectors. It does not redistribute the Android application or native library.

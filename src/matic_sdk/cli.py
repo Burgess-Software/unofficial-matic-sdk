@@ -703,13 +703,11 @@ def control_status() -> None:
                 "sdk_default_command_protocol_version": None,
                 "documented_intents": len(specs),
                 "wire_verified_codecs": available,
-                "live_control_enabled": available > 0,
-                "reason": (
-                    None
-                    if available
-                    else "ChannelRequest and acknowledgement semantics remain "
-                    "unresolved"
-                ),
+                "stationary_stop_enabled": COMMAND_REGISTRY.spec_for(
+                    "user.stop"
+                ).codec_available,
+                "motion_control_enabled": False,
+                "remaining_commands": "fail-closed pending command-specific proof",
             },
             indent=2,
         )

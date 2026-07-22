@@ -36,8 +36,9 @@ def test_collection_inventory_is_exposed() -> None:
 def test_control_status_is_explicitly_fail_closed() -> None:
     result = runner.invoke(app, ["control", "status"])
     assert result.exit_code == 0
-    assert '"wire_verified_codecs": 0' in result.stdout
-    assert '"live_control_enabled": false' in result.stdout
+    assert '"wire_verified_codecs": 1' in result.stdout
+    assert '"stationary_stop_enabled": true' in result.stdout
+    assert '"motion_control_enabled": false' in result.stdout
 
 
 def test_control_inventory_is_complete() -> None:

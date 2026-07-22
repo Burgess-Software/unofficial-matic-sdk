@@ -10,31 +10,20 @@ from matic_sdk.collections import (
     CollectionManager,
     CollectionSubscription,
 )
-from matic_sdk.commands import CommandExecutionError, CommandExecutor
+from matic_sdk.commands import CommandExecutor
 from matic_sdk.config import InsecureTransportError, MaticConfig
 from matic_sdk.credentials import BotToken, CredentialStore
 from matic_sdk.discovery import BotInformation, get_bot_info
-from matic_sdk.models.control import TransportAcknowledgement
 from matic_sdk.protocol.collections import (
     DEFAULT_SUBSCRIPTION_CONFIG,
     RawCollectionEvent,
     SubscriptionConfig,
 )
-from matic_sdk.protocol.commands import EncodedCommand
 from matic_sdk.telemetry import DEFAULT_CONTROL_FEEDBACK_TARGETS, TelemetrySession
+from matic_sdk.transport.commands import _HermesCommandTransport
 from matic_sdk.transport.h2 import H2Transport
 
 HANDSHAKE_PATH = "/hermes.Hermes/Handshake"
-
-
-class _PendingCommandTransport:
-    """Unreachable until a complete ChannelRequest codec is checked in."""
-
-    async def send_channel(self, command: EncodedCommand) -> TransportAcknowledgement:
-        del command
-        raise CommandExecutionError(
-            "the Hermes ChannelRequest transport remains intentionally disabled"
-        )
 
 
 class MaticClient:
@@ -52,7 +41,7 @@ class MaticClient:
         self.credentials = credentials
         self.collections = CollectionManager(self.subscribe)
         self.commands = CommandExecutor(
-            _PendingCommandTransport(),
+            _HermesCommandTransport(transport),
             protocol_version=config.command_protocol_version,
             tls_identity_verified=config.tls.verified,
         )

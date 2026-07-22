@@ -47,11 +47,20 @@ stream.
 
 Static tracing through `UserCommand::to_proto` and Prost encoding established
 the complete inner protobuf bodies for Stop, StayPut, Pause, Resume, and Dock.
-Their `CommandSpec` entries expose those bytes as `known_payload` with the
-`payload_verified` evidence level for offline inspection and golden tests.
-The UserCommand send path also establishes the exact Hermes target
-`user_command`.
+Their `CommandSpec` entries expose those bytes as `known_payload` for inspection
+and golden tests. The UserCommand send path establishes the exact Hermes target
+`user_command`. Independent reconstruction and official-client evidence
+established `ChannelRequest` field 1 as the channel name, field 2 as the inner
+payload, and one `ChannelResponse` as the RPC acknowledgement. The response's
+bytes field defaults to empty, but the SDK accepts and validates either
+the empty/default response or a populated field without exposing its contents.
 
-This is deliberately not a callable codec. The containing `ChannelRequest` and
-acknowledgement semantics remain unresolved. The default registry therefore
-still has zero sendable commands.
+Stop is the sole callable codec and carries the `wire_verified` evidence level.
+StayPut, Pause, Resume, and Dock remain `payload_verified`: knowing their inner
+bytes is not treated as command-specific live proof. Every other command also
+remains fail-closed.
+
+The Stop path was delivered once by this SDK on 2026-07-22. The authenticated
+Hermes call returned one `ChannelResponse` and gRPC status 0. The already-docked
+robot stayed docked during the independent telemetry observation window, so
+transport acknowledgement and physical effect remain explicitly separate.

@@ -28,10 +28,18 @@ command families. The Hermes RPC and typed client-side models are static
 evidence. Each encoder in this SDK must carry its own verification level.
 
 The inner payloads for Stop, StayPut, Pause, Resume, and Dock plus their
-`user_command` target are recovered; the surrounding channel envelope is not.
-Incomplete encodings fail closed rather than guessing protobuf field numbers.
-Transport acknowledgement is reported separately from an independently
+`user_command` target are recovered. The `ChannelRequest` envelope and unary
+`ChannelResponse` acknowledgement are also established. Stop is the only
+enabled codec because it has end-to-end command-specific evidence and is
+stationary. The other commands fail closed rather than relying on an untested
+payload. Transport acknowledgement is reported separately from an independently
 observed state change.
+
+On 2026-07-22 this SDK sent Stop exactly once over a certificate-pinned,
+authenticated connection. Hermes returned one response with gRPC status 0.
+The robot was docked before and after the four-second observation window, so
+the result verifies command delivery but does not manufacture evidence of a
+physical transition that could not occur from that starting state.
 
 ## Firmware boundary
 

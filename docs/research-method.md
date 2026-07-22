@@ -130,11 +130,19 @@ The public UniFFI variant numbers were not protobuf tags; the trace followed
 their lift into Rust enum discriminants, `UserCommand::to_proto`, and the
 generated Prost encoders.
 
-The outer `ChannelRequest` and response acknowledgement semantics remain
-unresolved. Consequently those payloads are golden evidence, not sendable
-codecs. The default registry has no live encoder and fails before opening a
-mutating stream. This boundary prevents a partially reconstructed message from
-moving the robot or changing persistent state.
+Independent reconstruction established `ChannelRequest` as a channel-name
+field plus encoded value, with `hermes-target` carrying the same channel name.
+Official-client behavior corroborates one half-closed request and one
+`ChannelResponse` on success. Stop is therefore the sole sendable codec. The
+other payloads remain golden evidence and fail before opening a mutating stream
+until each command has equivalent command-specific proof. This boundary
+prevents a partially reconstructed message from moving the robot or changing
+persistent state.
+
+The SDK Stop implementation was then exercised once against an owner-authorized
+robot on 2026-07-22. A pinned TLS identity, authenticated handshake, one Hermes
+response, and gRPC status 0 established delivery. The robot was already docked
+and stayed docked, so no state transition was claimed.
 
 ## Firmware boundary
 
