@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - run: uv sync --all-extras --group dev
+      - run: uv run ruff check .
+      - run: uv run pytest -p pytest_asyncio.plugin
+      - run: uv run python -m build
+      - name: Smoke-test built wheel
+        run: |
+          uv venv .wheel-venv
+          wheel_path=$(realpath dist/*.whl)
+          uv pip install --python .wheel-venv/bin/python "$wheel_path[all]"
+          .wheel-venv/bin/matic --version
+          .wheel-venv/bin/python -c "import matic_sdk; from matic_sdk.cli import _messages; from matic_sdk.maps import SUPPORTED_MAP_TARGETS; assert len(matic_sdk.KNOWN_TARGETS) == 43; assert 'map_integrated' in SUPPORTED_MAP_TARGETS"
+
+  repository-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python tools/scan_repository.py
