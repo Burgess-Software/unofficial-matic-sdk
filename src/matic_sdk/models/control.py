@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import ClassVar
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 
 def utc_now() -> datetime:
@@ -79,10 +79,17 @@ class UserAction(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class UserCommand(ControlCommand):
-    """Simple variants of the recovered ``UserCommand`` sum type."""
+    """Simple variants of the recovered ``UserCommand`` sum type.
+
+    Optional values are action-specific and codecs reject values that do not
+    belong to the selected variant.  Keeping them separate prevents a generic
+    bag of arguments from silently producing a different protobuf command.
+    """
 
     action: UserAction
-    session_id: str | None = None
+    until_localized: bool | None = None
+    mission_id: int | None = None
+    coverage_session_id: UUID | None = None
 
     command_prefix: ClassVar[str] = "user"
 
@@ -95,10 +102,9 @@ class UserCommand(ControlCommand):
 class JoystickCommand(ControlCommand):
     """Robot-relative velocity intent.
 
-    The official binding establishes two float fields with these units.  The
-    protobuf field numbers and containing command envelope remain unresolved.
-    Use :class:`matic_sdk.safety.TeleopSession` instead of constructing a
-    continuous stream manually.
+    The exact protobuf fields and containing command envelope are known, but
+    direct execution remains blocked. Use :class:`matic_sdk.safety.TeleopSession`
+    so a future live-control path cannot bypass its dead-man watchdog.
     """
 
     linear_mps: float
@@ -121,7 +127,7 @@ class NavigationMode(StrEnum):
 class MissionPosture:
     """A high-level mission-relative 2D destination."""
 
-    mission_id: str
+    mission_id: int
     x_meters: float
     y_meters: float
     yaw_radians: float
@@ -150,7 +156,7 @@ class CoverageCommand(ControlCommand):
     """Coverage intent; fields are SDK-level inputs, not wire fields."""
 
     action: CoverageAction
-    mission_id: str | None = None
+    mission_id: int | None = None
     region_ids: tuple[str, ...] = ()
     options: Mapping[str, object] = field(default_factory=dict, repr=False)
 
@@ -165,12 +171,27 @@ class CleaningAction(StrEnum):
     MANUAL = "manual"
 
 
+class ExplicitFloorCleaningMode(StrEnum):
+    """Exact manual-clean modes exposed by the Android binding."""
+
+    SWEEPING_CARPET = "sweeping_carpet"
+    SWEEPING_HARDFLOOR = "sweeping_hardfloor"
+    MOPPING_HARDFLOOR = "mopping_hardfloor"
+    SWEEPING_TRANSITION = "sweeping_transition"
+
+
+class CleaningIntensity(StrEnum):
+    """Exact manual-clean intensity variants exposed by the binding."""
+
+    BASE = "base"
+    MAX = "max"
+
+
 @dataclass(frozen=True, slots=True)
 class CleaningCommand(ControlCommand):
+    mode: ExplicitFloorCleaningMode
+    intensity: CleaningIntensity
     action: CleaningAction = CleaningAction.MANUAL
-    enabled: bool = True
-    mode: str | None = None
-    intensity: str | None = None
 
     command_prefix: ClassVar[str] = "cleaning"
 
@@ -201,7 +222,6 @@ class MapEnvironmentAction(StrEnum):
     EDIT_ROOMS = "edit_rooms"
     EDIT_NO_GO_ZONE = "edit_no_go_zone"
     EDIT_DRIVE_ONLY_ZONE = "edit_drive_only_zone"
-    EDIT_FLOOR = "edit_floor"
     EDIT_STAIRS = "edit_stairs"
     EDIT_SEMANTICS_OVERRIDE = "edit_semantics_override"
     EDIT_SINK_SUMMON_LOCATION = "edit_sink_summon_location"
@@ -217,7 +237,7 @@ class MapEnvironmentAction(StrEnum):
 @dataclass(frozen=True, slots=True)
 class MapEnvironmentCommand(ControlCommand):
     action: MapEnvironmentAction
-    mission_id: str | None = None
+    mission_id: int | None = None
     change_set: Mapping[str, object] = field(default_factory=dict, repr=False)
 
     command_prefix: ClassVar[str] = "map"
@@ -257,7 +277,10 @@ class DeviceAction(StrEnum):
 @dataclass(frozen=True, slots=True)
 class DeviceCommand(ControlCommand):
     action: DeviceAction
-    value: str | bool | None = None
+    new_name: str | None = None
+    enabled: bool | None = None
+    discoverable_seconds: int | None = None
+    retain_user_data: bool | None = None
 
     command_prefix: ClassVar[str] = "device"
 
@@ -276,10 +299,16 @@ class SettingAction(StrEnum):
     JUKEBOX = "jukebox"
 
 
+class JukeboxTrack(StrEnum):
+    OH_HANUKKAH = "oh_hanukkah"
+    DECK_THE_HALLS = "deck_the_halls"
+    JINGLE_BELLS = "jingle_bells"
+
+
 @dataclass(frozen=True, slots=True)
 class SettingsCommand(ControlCommand):
     action: SettingAction
-    value: str | bool | None
+    value: bool | JukeboxTrack | None
 
     command_prefix: ClassVar[str] = "settings"
 
@@ -298,10 +327,17 @@ class ScheduleAction(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class ScheduleEventKey:
+    """Native schedule key: a mission u32 plus an event UUID."""
+
+    mission_id: int
+    event_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class ScheduleCommand(ControlCommand):
     action: ScheduleAction
-    schedule_id: str | None = None
-    enabled: bool | None = None
+    key: ScheduleEventKey | None = None
     definition: Mapping[str, object] = field(default_factory=dict, repr=False)
 
     command_prefix: ClassVar[str] = "schedule"
@@ -322,9 +358,9 @@ class MediaAction(StrEnum):
 @dataclass(frozen=True, slots=True)
 class MediaCommand(ControlCommand):
     action: MediaAction
-    recording_id: str | None = None
+    recording_id: int | None = None
     enabled: bool | None = None
-    options: Mapping[str, object] = field(default_factory=dict, repr=False)
+    confirm_for_each: bool | None = None
 
     command_prefix: ClassVar[str] = "media"
 
@@ -343,7 +379,8 @@ class TelemetryAction(StrEnum):
 class TelemetryCommand(ControlCommand):
     action: TelemetryAction
     enabled: bool | None = None
-    options: Mapping[str, object] = field(default_factory=dict, repr=False)
+    device_id: str | None = field(default=None, repr=False)
+    app_bundle: str | None = None
 
     command_prefix: ClassVar[str] = "telemetry"
 
@@ -361,7 +398,6 @@ class LifecycleAction(StrEnum):
 @dataclass(frozen=True, slots=True)
 class LifecycleCommand(ControlCommand):
     action: LifecycleAction
-    update_channel: str | None = None
 
     command_prefix: ClassVar[str] = "lifecycle"
 
@@ -429,6 +465,7 @@ class CommandReceipt:
 __all__ = [
     "CleaningAction",
     "CleaningCommand",
+    "CleaningIntensity",
     "CommandFamily",
     "CommandReceipt",
     "CommandRisk",
@@ -437,7 +474,9 @@ __all__ = [
     "CoverageCommand",
     "DeviceAction",
     "DeviceCommand",
+    "ExplicitFloorCleaningMode",
     "JoystickCommand",
+    "JukeboxTrack",
     "LifecycleAction",
     "LifecycleCommand",
     "MapEnvironmentAction",
@@ -452,6 +491,7 @@ __all__ = [
     "RawMotorCommand",
     "ScheduleAction",
     "ScheduleCommand",
+    "ScheduleEventKey",
     "SettingAction",
     "SettingsCommand",
     "TelemetryAction",

@@ -1,11 +1,15 @@
 # Capability status
 
-The SDK uses four evidence labels:
+Control evidence has two independent axes. The codec evidence levels are
+`static_type`, `static_fields`, `payload_verified`, and `wire_verified`;
+`wire_verified` is necessary but safety policy can still disable a codec. The separate
+`live_delivery_verified` flag means this SDK sent one bounded request to an
+authenticated robot and received the expected Hermes acknowledgement. Neither
+label alone claims a physical effect.
 
-- **Verified live:** observed from an authenticated robot or official client.
-- **Verified offline:** decoded from real data, then covered by synthetic tests.
-- **Static:** present in the official client binary, but not sent by this SDK.
-- **Experimental:** implemented with incomplete compatibility or service evidence.
+Read-side features use the broader terms verified live, verified offline,
+static, and experimental. Experimental means compatibility or service evidence
+is still incomplete.
 
 ## Reads
 
@@ -27,19 +31,27 @@ network, settings, scheduling, media, diagnostics, update, reboot, and shutdown
 command families. The Hermes RPC and typed client-side models are static
 evidence. Each encoder in this SDK must carry its own verification level.
 
-The inner payloads for Stop, StayPut, Pause, Resume, and Dock plus their
-`user_command` target are recovered. The `ChannelRequest` envelope and unary
-`ChannelResponse` acknowledgement are also established. Stop is the only
-enabled codec because it has end-to-end command-specific evidence and is
-stationary. The other commands fail closed rather than relying on an untested
-payload. Transport acknowledgement is reported separately from an independently
-observed state change.
+The registry documents 65 command intents and exact Hermes targets for each.
+Twenty-four have exact wire formats and 23 have registered codecs. Forty-one
+remain fail-closed because their inner protobuf encoding is incomplete;
+raw-motor encoding is exact but also fails closed because hardware-safe ranges
+are unproven. The [command verification ledger](command-verification.md)
+records every target, evidence level, live state, safety gate, and blocker.
 
-On 2026-07-22 this SDK sent Stop exactly once over a certificate-pinned,
-authenticated connection. Hermes returned one response with gRPC status 0.
-The robot was docked before and after the four-second observation window, so
-the result verifies command delivery but does not manufacture evidence of a
-physical transition that could not occur from that starting state.
+On 2026-07-22 an initial one-shot check sent Stop once. A separate bounded
+verifier sent StayPut, Pause, child lock, pet-waste avoidance, and voice once
+each over a certificate-pinned, authenticated connection. It required parked
+telemetry, pre-read all three settings, and wrote only their existing values.
+Neither path retried an unknown outcome. Hermes acknowledged all six requests.
+The robot remained docked and the settings retained their prior values, so
+these checks verify delivery but do not claim an unobservable transition.
+
+The other 18 exact formats have offline wire evidence only. No motion-changing,
+raw-actuation, destructive, network-changing, update, reboot, or shutdown
+command was live-tested. Raw-motor encoding is not registered at all. Risk
+capabilities control whether an informed caller may send an enabled exact
+codec; they do not upgrade its evidence level. Direct joystick execution
+remains blocked even though its codec is exact.
 
 ## Firmware boundary
 

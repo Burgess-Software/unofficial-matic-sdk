@@ -15,11 +15,12 @@ from uuid import uuid4
 
 from matic_sdk.models.control import (
     CommandReceipt,
-    CommandRisk,
     ControlCommand,
     JoystickCommand,
     ObservedEffect,
     ObservedEffectStatus,
+    SettingAction,
+    SettingsCommand,
     TransportAcknowledgement,
     UserAction,
     UserCommand,
@@ -209,7 +210,7 @@ class CommandExecutor:
                     "commands require verified robot TLS identity"
                 )
             require_motion_controls(
-                spec.risk is CommandRisk.MOTION,
+                spec.requires_motion_controls,
                 motion_controls,
             )
             require_unsafe_controls(
@@ -295,6 +296,11 @@ class CommandExecutor:
 
         return await self.execute(UserCommand(UserAction.STOP))
 
+    async def stay_put(self) -> CommandReceipt:
+        """Ask the robot to remain stationary at its current location."""
+
+        return await self.execute(UserCommand(UserAction.STAY_PUT))
+
     async def pause(self) -> CommandReceipt:
         return await self.execute(UserCommand(UserAction.PAUSE))
 
@@ -308,6 +314,20 @@ class CommandExecutor:
         return await self.execute(
             UserCommand(UserAction.DOCK),
             motion_controls=motion_controls,
+        )
+
+    async def set_binary_setting(
+        self,
+        action: SettingAction,
+        enabled: bool,
+        *,
+        unsafe_controls: UnsafeControls,
+    ) -> CommandReceipt:
+        """Set an exact, allowlisted boolean preference."""
+
+        return await self.execute(
+            SettingsCommand(action, enabled),
+            unsafe_controls=unsafe_controls,
         )
 
 

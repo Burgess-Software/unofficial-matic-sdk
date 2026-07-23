@@ -22,17 +22,21 @@ def _encode_channel_request(command: EncodedCommand) -> bytes:
     """Encode the proven ``ChannelRequest`` protobuf envelope.
 
     ``channel_name`` is field 1 and the already encoded command value is field
-    2. The same channel name is also sent as ``hermes-target`` metadata.
+    2. Protobuf omits field 2 for a valid empty command message. The same
+    channel name is also sent as ``hermes-target`` metadata.
     """
 
-    if not isinstance(command.payload, bytes) or not command.payload:
-        raise ValueError("command payload must be non-empty bytes")
+    if not isinstance(command.payload, bytes):
+        raise ValueError("command payload must be bytes")
     if not isinstance(command.hermes_target, str) or not _CHANNEL_NAME_RE.fullmatch(
         command.hermes_target
     ):
         raise ValueError("Hermes target must be a lowercase ASCII channel name")
     channel_name = command.hermes_target.encode("ascii")
-    return encode_bytes_field(1, channel_name) + encode_bytes_field(2, command.payload)
+    request = encode_bytes_field(1, channel_name)
+    if command.payload:
+        request += encode_bytes_field(2, command.payload)
+    return request
 
 
 def _validate_channel_response(payload: bytes) -> None:

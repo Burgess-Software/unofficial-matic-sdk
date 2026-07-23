@@ -124,25 +124,39 @@ claim of access to the robot's full SLAM volume, TSDF, ESDF, or triangle mesh.
 
 ## Command evidence and safety boundary
 
-Static tracing recovered 66 command intents, the exact `user_command` target,
-and complete inner protobuf bodies for Stop, StayPut, Pause, Resume, and Dock.
-The public UniFFI variant numbers were not protobuf tags; the trace followed
-their lift into Rust enum discriminants, `UserCommand::to_proto`, and the
-generated Prost encoders.
+Static tracing recovered 65 command intents and their Hermes targets. Continued
+tracing through concrete conversion and generated Prost encoding paths, plus
+independent reconstruction and byte-level golden fixtures, produced 24 exact
+wire formats, 23 of which have enabled registry codecs. The public UniFFI
+variant numbers were not protobuf tags; the trace
+followed their lift into Rust enum discriminants, concrete protocol types, and
+generated encoders.
 
 Independent reconstruction established `ChannelRequest` as a channel-name
 field plus encoded value, with `hermes-target` carrying the same channel name.
 Official-client behavior corroborates one half-closed request and one
-`ChannelResponse` on success. Stop is therefore the sole sendable codec. The
-other payloads remain golden evidence and fail before opening a mutating stream
-until each command has equivalent command-specific proof. This boundary
-prevents a partially reconstructed message from moving the robot or changing
-persistent state.
+`ChannelResponse` on success. A valid empty command protobuf has no inner bytes;
+its `ChannelRequest` therefore omits the default bytes field. This is distinct
+from an unknown or guessed payload.
 
-The SDK Stop implementation was then exercised once against an owner-authorized
-robot on 2026-07-22. A pinned TLS identity, authenticated handshake, one Hermes
-response, and gRPC status 0 established delivery. The robot was already docked
-and stayed docked, so no state transition was claimed.
+Exact wire evidence is necessary but not always sufficient to register an
+encoder, and it is not live delivery evidence. Raw-motor encoding remains
+disabled because hardware-safe ranges are not proven. Commands with incomplete
+or policy-disabled encodings fail before opening a mutating stream. Exact
+motion and unsafe commands retain their separate short-lived capability gates;
+trace calibration requires both. Direct joystick execution is additionally
+blocked pending watchdog-path integration and live behavior validation.
+
+The SDK implementations of Stop, StayPut, Pause, child lock, pet-waste
+avoidance, and voice were exercised against an owner-authorized robot on
+2026-07-22. Stop used an initial one-shot check. A separate verifier required
+parked telemetry, pre-read the three settings, then sent StayPut, Pause, and
+each same-value setting write once. Neither path retried an ambiguous result. A
+pinned TLS identity, authenticated handshake, one Hermes response per command,
+and gRPC status 0 established delivery. The robot stayed docked and each
+setting preserved its value, so no physical or setting transition was claimed.
+No motion-changing, raw-actuation, destructive, network-changing, update,
+reboot, or shutdown command was live-tested.
 
 ## Firmware boundary
 

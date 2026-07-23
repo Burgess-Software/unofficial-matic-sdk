@@ -20,7 +20,11 @@ from matic_sdk.discovery import BotInformation
 from matic_sdk.discovery import probe as probe_endpoint
 from matic_sdk.enrollment import enroll as enroll_device
 from matic_sdk.protocol.collections import KNOWN_TARGETS, TARGET_GROUPS
-from matic_sdk.protocol.commands import COMMAND_REGISTRY, DEFAULT_PROTOCOL_VERSION
+from matic_sdk.protocol.commands import (
+    COMMAND_REGISTRY,
+    DEFAULT_PROTOCOL_VERSION,
+    CodecEvidenceLevel,
+)
 from matic_sdk.telemetry import record_telemetry
 from matic_sdk.transport.tls import create_ssl_context, verify_peer
 
@@ -684,6 +688,11 @@ def list_controls() -> None:
                     spec.family.value,
                     spec.risk.value,
                     spec.evidence_level.value,
+                    (
+                        "live-delivery-verified"
+                        if spec.live_delivery_verified
+                        else "not-live-tested"
+                    ),
                     "available" if spec.codec_available else "fail-closed",
                 )
             )
@@ -696,18 +705,28 @@ def control_status() -> None:
 
     specs = tuple(COMMAND_REGISTRY.specs.values())
     available = sum(spec.codec_available for spec in specs)
+    wire_verified = sum(
+        spec.evidence_level is CodecEvidenceLevel.WIRE_VERIFIED for spec in specs
+    )
+    live_verified = sum(spec.live_delivery_verified for spec in specs)
+    motion_available = sum(
+        spec.codec_available and spec.requires_motion_controls for spec in specs
+    )
     typer.echo(
         json.dumps(
             {
                 "observed_app_protocol_version": DEFAULT_PROTOCOL_VERSION,
                 "sdk_default_command_protocol_version": None,
                 "documented_intents": len(specs),
-                "wire_verified_codecs": available,
+                "wire_verified_commands": wire_verified,
+                "registered_codecs": available,
+                "live_delivery_verified_commands": live_verified,
                 "stationary_stop_enabled": COMMAND_REGISTRY.spec_for(
                     "user.stop"
                 ).codec_available,
-                "motion_control_enabled": False,
-                "remaining_commands": "fail-closed pending command-specific proof",
+                "motion_codecs_available": motion_available,
+                "direct_teleop_enabled": False,
+                "remaining_fail_closed_commands": len(specs) - available,
             },
             indent=2,
         )

@@ -43,24 +43,41 @@ not accepted as a protobuf field number.
 Commands without proven wire encoders raise an error before opening a mutating
 stream.
 
-## Recovered inner payloads
+## Verification state
 
-Static tracing through `UserCommand::to_proto` and Prost encoding established
-the complete inner protobuf bodies for Stop, StayPut, Pause, Resume, and Dock.
-Their `CommandSpec` entries expose those bytes as `known_payload` for inspection
-and golden tests. The UserCommand send path establishes the exact Hermes target
-`user_command`. Independent reconstruction and official-client evidence
-established `ChannelRequest` field 1 as the channel name, field 2 as the inner
-payload, and one `ChannelResponse` as the RPC acknowledgement. The response's
-bytes field defaults to empty, but the SDK accepts and validates either
-the empty/default response or a populated field without exposing its contents.
+The registry currently contains 65 intents. Twenty-four have exact protobuf
+formats and Hermes targets and therefore carry `wire_verified` evidence;
+23 have registered codecs. Raw-motor bytes are wire-verified but remain
+policy-disabled because evidence-backed hardware ranges are unknown. The other
+41 expose static type or field evidence but no codec. See the [complete command
+ledger](command-verification.md) for every key, target, gate, and current
+blocker.
 
-Stop is the sole callable codec and carries the `wire_verified` evidence level.
-StayPut, Pause, Resume, and Dock remain `payload_verified`: knowing their inner
-bytes is not treated as command-specific live proof. Every other command also
-remains fail-closed.
+Wire verification and live delivery are separate facts. A wire-verified format
+means its inner protobuf, target, and `ChannelRequest` envelope are exact; it
+does not claim that this SDK has sent the command, observed its effect, or has
+enough safety evidence to register it. Motion and hazardous encoders still
+require their explicit short-lived capabilities. Trace calibration requires
+both. The joystick encoder is exact but direct execution is blocked so it
+cannot bypass the watchdog-backed `TeleopSession` path.
 
-The Stop path was delivered once by this SDK on 2026-07-22. The authenticated
-Hermes call returned one `ChannelResponse` and gRPC status 0. The already-docked
-robot stayed docked during the independent telemetry observation window, so
-transport acknowledgement and physical effect remain explicitly separate.
+`ChannelRequest` field 1 contains the channel name and field 2 contains the
+inner payload. For a valid empty protobuf command, field 2 is canonically
+omitted rather than encoded as a zero-length bytes field. A successful unary
+RPC returns one `ChannelResponse`; its bytes field may itself be absent/default
+or populated.
+
+Six commands were delivered once by this SDK on 2026-07-22: Stop, StayPut,
+Pause, child lock, pet-waste avoidance, and voice. Stop used an initial one-shot
+check. A separate bounded verifier required parked telemetry, pre-read all
+setting values, wrote each setting's existing value, and sent the other five
+commands once each. Neither path retried an ambiguous outcome. The robot
+remained docked and the settings remained unchanged, so the evidence establishes
+delivery without manufacturing a state-transition claim. No motion-changing,
+raw-actuation, destructive, network-changing, update, reboot, or shutdown
+command was live-tested.
+
+The reusable verifier is
+[`tools/live_verify_safe_commands.py`](../tools/live_verify_safe_commands.py).
+It has no arbitrary channel or raw-payload option and refuses to run without
+the exact confirmation phrase and a parked-state preflight.

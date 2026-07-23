@@ -22,12 +22,13 @@ gated command surface.
 | Read-only Hermes collections | 43 targets accepted by a live robot |
 | RGB, integrated, semantic and coverage maps | Verified offline from live captures |
 | Sparse colored surface voxels | Verified offline from live captures |
-| Direct laptop-originated commands | Stop delivery live-verified; all other commands fail closed pending command-specific proof |
+| Direct laptop-originated commands | 24 exact wire formats; 23 registered codecs; 6 commands live-delivery-verified |
 | Portal-backed remote transport | Experimental and not currently reliable |
 | Firmware, root, filesystem or SSH access | Not available |
 
 See [how the protocol was recovered](docs/research-method.md),
 [capability status](docs/status.md), [protocol notes](docs/protocol.md), the
+[per-command verification ledger](docs/command-verification.md), the
 [control safety model](docs/safety.md), and the explicitly
 [experimental remote path](docs/remote.md) before using those APIs.
 
@@ -119,21 +120,36 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-Command intent APIs already enforce protocol, TLS, motion, and hazardous-action
-guards. The stationary Stop command has a proven encoder and Hermes envelope.
-All other commands still fail before network I/O. There is no unrestricted
-public raw-command escape hatch.
+Command intent APIs enforce protocol, TLS, motion, and hazardous-action guards.
+Of 65 documented intents, 24 have exact wire formats and 23 have registered
+codecs. Raw-motor encoding is proven but deliberately disabled because safe
+hardware ranges are not. Six commands were delivered once through this SDK:
+Stop, StayPut, Pause, child lock, pet-waste avoidance, and voice. The three
+setting checks wrote the value already reported by the robot. Commands with
+incomplete or policy-disabled encodings fail before network I/O. There is no
+unrestricted public raw-command escape hatch.
+
+An exact wire codec proves serialization, target selection, and the surrounding
+Hermes envelope; it does not by itself prove a command's physical effect or
+safety. Motion and unsafe codecs remain behind short-lived explicit
+capabilities. The joystick body is exact, but direct execution is blocked until
+it can be integrated and validated through the watchdog-backed teleoperation
+path.
 
 “Wire codec” means the code that serializes a typed command into the exact
 protobuf bytes and channel envelope the robot accepts. “Fail closed pending
 proof” means the SDK raises an error without opening a network stream whenever
-those bytes, the target, or the command-specific behavior have not been proven;
-it never guesses field numbers or sends a plausible-looking payload.
+those bytes, the target, or the envelope have not been proven; it never guesses
+field numbers or sends a plausible-looking payload. Live delivery and observed
+behavior are tracked separately from this encoding boundary.
 
-Stop was sent once through this SDK to an authenticated robot on 2026-07-22.
-Hermes returned one `ChannelResponse` and gRPC status 0. The robot was already
-docked and remained docked, so this verifies transport delivery without
-claiming a new physical state transition.
+Stop was delivered once in an initial one-shot check on 2026-07-22. A separate
+bounded verifier then required parked telemetry, read each setting before
+writing it, and sent StayPut, Pause, and the three same-value setting writes
+once each. No ambiguous outcome was retried. Hermes acknowledged all six total
+requests. The robot was docked before and after the three stationary commands;
+each setting retained its pre-read value. These results verify delivery without
+claiming a physical or setting transition that the tests could not observe.
 
 ```python
 import asyncio
