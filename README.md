@@ -19,8 +19,12 @@ service without a cloud relay.
   device state, settings, schedules, history, media, and maps.
 - Assemble captured RGB, integrated, coverage, and semantic map tiles into
   correctly oriented PNG mosaics.
+  <img width="1024" height="928" alt="image" src="https://github.com/user-attachments/assets/58efbb9e-4180-4c8d-b38f-ff300f1c86b7" />
+
 - Export Matic's actual `32 x 32 x 24` sparse colored surface representation as
   a standard PLY point cloud.
+  <img width="2416" height="1338" alt="image" src="https://github.com/user-attachments/assets/df910ffe-de7b-4bc0-bf21-1c3847c25a78" />
+
 - Recover retained WebP thumbnails and images embedded in captured collection
   responses.
 - Stop, pause, or tell the robot to stay put using typed Python APIs that have
