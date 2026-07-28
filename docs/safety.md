@@ -21,10 +21,10 @@ Those requirements prevent sending credentials to an unverified endpoint or
 inventing unknown wire data. They are protocol and authentication boundaries,
 not operator-safety interlocks.
 
-Commands whose encoding is incomplete remain unavailable because the SDK
-cannot construct their payload reliably. The exact raw-motor codec is
-registered and direct; the SDK applies no device-specific range limits to
-those setpoints.
+All 65 currently documented protocol-25 commands have exact codecs. Unknown
+commands and future protocol versions remain unavailable because the SDK will
+not invent wire data. The exact raw-motor codec is registered and direct; the
+SDK applies no device-specific range limits to those setpoints.
 
 ## Delivery behavior
 

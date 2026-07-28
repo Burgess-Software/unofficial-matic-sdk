@@ -1,12 +1,10 @@
 # Command verification ledger
 
 This is the protocol-25 command boundary implemented by the SDK: 65 documented
-intents, 30 exact `wire_verified` formats and registered codecs, and 10 command
+intents, 65 exact `wire_verified` formats and registered codecs, and 10 command
 intents with live delivery evidence. `Wire / yes` means the protobuf body,
 Hermes target, and surrounding channel envelope are exact and the codec is
-registered. `Static type / no` or `Static fields / no` means the target and
-some client-side structure are known, but the SDK has no encoder and fails
-before network I/O.
+registered.
 
 The live column is independent of codec evidence. `Yes` records a bounded,
 acknowledged send on the date stated in that row; observed physical effects
@@ -14,7 +12,7 @@ are described separately. Risk is descriptive metadata and does not gate a
 command. Exact offline codecs have not been live-tested unless the row
 explicitly says yes.
 
-| Command key | Hermes target | Evidence / codec | SDK live | Risk | Current limitation or blocker |
+| Command key | Hermes target | Evidence / codec | SDK live | Risk | Live evidence or notes |
 | --- | --- | --- | --- | --- | --- |
 | `user.stop` | `user_command` | Wire / yes | Yes | stationary | Acknowledged while docked; no transition claimed |
 | `user.stay_put` | `user_command` | Wire / yes | Yes | stationary | Acknowledged while docked; no transition claimed |
@@ -35,49 +33,49 @@ explicitly says yes.
 | `coverage.stain_mode` | `user_command` | Wire / yes | No | motion | Exact dry-stain and wet-spill drawn-circle plans; no live test |
 | `cleaning.manual` | `user_command` | Wire / yes | No | motion | No motion-changing live test |
 | `raw_motors.setpoints` | `motor_command` | Wire / yes | No | raw actuation | Direct codec with no device-specific range limits; not live-tested |
-| `map.build_partition` | `build_regions` | Static type / no | No | persistent | Exact inner protobuf tags incomplete |
-| `map.edit_rooms` | `rename_area_command` | Static type / no | No | persistent | Exact edit oneof and tags incomplete |
-| `map.edit_no_go_zone` | `nogo_command` | Static type / no | No | persistent | Exact edit oneof and tags incomplete |
-| `map.edit_drive_only_zone` | `nogo_command` | Static type / no | No | persistent | Exact edit oneof and tags incomplete |
-| `map.edit_stairs` | `stair_command` | Static type / no | No | persistent | Exact edit oneof and tags incomplete |
-| `map.edit_semantics_override` | `semantics_override` | Static type / no | No | persistent | Exact inner protobuf tags incomplete |
-| `map.edit_sink_summon_location` | `edit_sink_summon_location` | Static type / no | No | persistent | Exact variant encoding incomplete |
-| `map.canonicalize` | `floor_command` | Static type / no | No | persistent | Exact floor-command oneof tags incomplete |
-| `map.rename` | `floor_command` | Static type / no | No | persistent | Exact floor-command oneof tags incomplete |
-| `map.persistence_clear` | `map_command` | Static type / no | No | destructive | Destructive variant encoding incomplete |
-| `map.clear_map` | `map_command` | Static type / no | No | destructive | Destructive variant encoding incomplete |
-| `map.restore_map` | `map_command` | Static type / no | No | persistent | Exact variant encoding incomplete |
-| `map.upload_map_for_debug` | `map_command` | Static type / no | No | sensitive | Exact variant encoding incomplete |
+| `map.build_partition` | `build_regions` | Wire / yes | No | persistent | Offline native-serializer golden proof only |
+| `map.edit_rooms` | `rename_area_command` | Wire / yes | No | persistent | Rename, merge, and split variants proven offline |
+| `map.edit_no_go_zone` | `nogo_command` | Wire / yes | No | persistent | Add and remove variants proven offline |
+| `map.edit_drive_only_zone` | `nogo_command` | Wire / yes | No | persistent | Add and remove variants proven offline |
+| `map.edit_stairs` | `stair_command` | Wire / yes | No | persistent | Add and remove variants proven offline |
+| `map.edit_semantics_override` | `semantics_override` | Wire / yes | No | persistent | All five semantic kinds proven offline |
+| `map.edit_sink_summon_location` | `edit_sink_summon_location` | Wire / yes | No | persistent | Add/modify and remove variants proven offline |
+| `map.canonicalize` | `floor_command` | Wire / yes | No | persistent | Both mission and next-noncanonical variants proven offline |
+| `map.rename` | `floor_command` | Wire / yes | No | persistent | Offline native-serializer golden proof only |
+| `map.persistence_clear` | `map_command` | Wire / yes | No | destructive | Destructive; offline wire proof only |
+| `map.clear_map` | `map_command` | Wire / yes | No | destructive | Destructive; offline wire proof only |
+| `map.restore_map` | `map_command` | Wire / yes | No | persistent | Offline native-serializer golden proof only |
+| `map.upload_map_for_debug` | `map_command` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
 | `map.clear_rgb_weights` | `clear_rgb_weights_command` | Wire / yes | No | destructive | Destructive; offline wire proof only |
 | `wifi.scan` | `wifi_scan_command` | Wire / yes | No | sensitive | Offline wire proof only |
-| `wifi.connect` | `wifi_update_command` | Static fields / no | No | persistent | Exact connect variant and tags incomplete |
-| `wifi.forget` | `wifi_update_command` | Static fields / no | No | destructive | Exact forget variant and tags incomplete |
-| `device.rename` | `new_bot_name` | Static fields / no | No | persistent | Exact protobuf tags incomplete |
-| `device.discoverability` | `set_device_discoverable` | Static fields / no | No | sensitive | Exact enable/disable variant encoding incomplete |
-| `device.new_mop_roll` | `new_mop_roll_override_command` | Static fields / no | No | persistent | Exact protobuf tag incomplete |
+| `wifi.connect` | `wifi_update_command` | Wire / yes | No | persistent | Offline native-serializer golden proof only |
+| `wifi.forget` | `wifi_update_command` | Wire / yes | No | destructive | Destructive; offline wire proof only |
+| `device.rename` | `new_bot_name` | Wire / yes | No | persistent | Offline native-serializer golden proof only |
+| `device.discoverability` | `set_device_discoverable` | Wire / yes | No | sensitive | Enable and disable variants proven offline |
+| `device.new_mop_roll` | `new_mop_roll_override_command` | Wire / yes | No | persistent | Offline native-serializer golden proof only |
 | `device.clear_calibration` | `clear_online_calib_command` | Wire / yes | No | destructive | Destructive; offline wire proof only |
 | `device.configure_shipping` | `configure_shipping_command` | Wire / yes | No | destructive | Destructive; offline wire proof only |
 | `settings.child_lock` | `child_lock_enabled_command` | Wire / yes | Yes | persistent | Same-value write acknowledged; no transition claimed |
 | `settings.pet_waste_avoidance` | `petwaste_enabled_command` | Wire / yes | Yes | persistent | Same-value write acknowledged; no transition claimed |
 | `settings.voice` | `voice_enabled_command` | Wire / yes | Yes | persistent | Same-value write acknowledged; no transition claimed |
-| `settings.auto_record_voice` | `auto_record_voice_enabled_command` | Static fields / no | No | sensitive | Exact protobuf tag incomplete |
-| `settings.matter_pairing` | `matter_pairing_command` | Static fields / no | No | sensitive | Exact protobuf tag incomplete |
-| `settings.preview_release` | `request_preview_release_command` | Static fields / no | No | persistent | Exact protobuf tag incomplete |
-| `settings.jukebox` | `jukebox_command` | Static fields / no | No | persistent | Exact enum and tags incomplete |
-| `schedule.add_or_modify` | `edit_schedule` | Static fields / no | No | persistent | Exact schedule variant encoding incomplete |
-| `schedule.remove` | `edit_schedule` | Static fields / no | No | destructive | Exact schedule variant encoding incomplete |
-| `schedule.toggle` | `edit_schedule` | Static fields / no | No | persistent | Exact schedule variant encoding incomplete |
+| `settings.auto_record_voice` | `auto_record_voice_enabled_command` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
+| `settings.matter_pairing` | `matter_pairing_command` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
+| `settings.preview_release` | `request_preview_release_command` | Wire / yes | No | persistent | Offline native-serializer golden proof only |
+| `settings.jukebox` | `jukebox_command` | Wire / yes | No | persistent | All optional enum variants proven offline |
+| `schedule.add_or_modify` | `edit_schedule` | Wire / yes | No | persistent | Full 1,905-byte standard event and custom-area structures proven offline |
+| `schedule.remove` | `edit_schedule` | Wire / yes | No | destructive | Destructive; offline wire proof only |
+| `schedule.toggle` | `edit_schedule` | Wire / yes | No | persistent | Offline native-serializer golden proof only |
 | `schedule.generate_suggested` | `generate_suggested_schedule` | Wire / yes | No | persistent | Offline wire proof only |
-| `schedule.sink_summon_add_or_modify` | `edit_sink_summon_schedule` | Static fields / no | No | persistent | Exact schedule variant encoding incomplete |
-| `schedule.sink_summon_remove` | `edit_sink_summon_schedule` | Static fields / no | No | destructive | Exact schedule variant encoding incomplete |
-| `media.recording_enable` | `recording_command` | Static fields / no | No | sensitive | Exact recording variant encoding incomplete |
-| `media.rolling_buffer_config` | `toggle_rolling_recordings` | Static fields / no | No | sensitive | Exact protobuf tags incomplete |
-| `media.flush_rolling_buffer` | `recording_command` | Static fields / no | No | sensitive | Exact recording variant encoding incomplete |
-| `media.confirm_save` | `recording_upload_confirmation` | Static fields / no | No | sensitive | Exact confirmation variant encoding incomplete |
-| `media.confirm_delete` | `recording_upload_confirmation` | Static fields / no | No | destructive | Exact confirmation variant encoding incomplete |
-| `telemetry.uploader_config` | `uploader_config_command` | Static fields / no | No | sensitive | Exact protobuf tags incomplete |
-| `telemetry.support_ssh_permission` | `user_tunnel_ssh_permission_command` | Static fields / no | No | sensitive | Exact protobuf tags incomplete; no shell access implied |
-| `telemetry.push_notification_subscription` | `subscribe_push_notifications` | Static fields / no | No | sensitive | Exact protobuf tags incomplete |
+| `schedule.sink_summon_add_or_modify` | `edit_sink_summon_schedule` | Wire / yes | No | persistent | Timing, duration, and enabled variants proven offline |
+| `schedule.sink_summon_remove` | `edit_sink_summon_schedule` | Wire / yes | No | destructive | Destructive; offline wire proof only |
+| `media.recording_enable` | `recording_command` | Wire / yes | No | sensitive | Enabled and disabled variants proven offline |
+| `media.rolling_buffer_config` | `toggle_rolling_recordings` | Wire / yes | No | sensitive | Enabled/confirm-each/disabled variants proven offline |
+| `media.flush_rolling_buffer` | `recording_command` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
+| `media.confirm_save` | `recording_upload_confirmation` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
+| `media.confirm_delete` | `recording_upload_confirmation` | Wire / yes | No | destructive | Destructive; offline wire proof only |
+| `telemetry.uploader_config` | `uploader_config_command` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
+| `telemetry.support_ssh_permission` | `user_tunnel_ssh_permission_command` | Wire / yes | No | sensitive | Offline wire proof only; no shell access implied |
+| `telemetry.push_notification_subscription` | `subscribe_push_notifications` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
 | `lifecycle.update` | `update_command` | Wire / yes | No | destructive | Destructive; offline wire proof only |
 | `lifecycle.reboot` | `reboot_command` | Wire / yes | No | destructive | Destructive; offline wire proof only |
 | `lifecycle.shutdown` | `reboot_command` | Wire / yes | No | destructive | Destructive; offline wire proof only |

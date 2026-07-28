@@ -41,17 +41,17 @@ Every recovered command has a `CommandSpec` describing its family, risk,
 available channel evidence, and verification state. Compatibility is currently
 gated globally to protocol 25. A decoded name or UniFFI enum discriminant is
 not accepted as a protobuf field number.
-Commands without proven wire encoders raise an error before opening a mutating
-stream.
+Unknown commands and unsupported future protocol versions raise an error before
+opening a mutating stream.
 
 ## Verification state
 
-The registry currently contains 65 intents. Thirty have exact protobuf formats
-and Hermes targets, carry `wire_verified` evidence, and have registered codecs.
-The raw-motor codec is included and applies no device-specific range limits.
-The other 35 expose static type or field evidence but no codec. See the
+The registry currently contains 65 intents. All 65 have exact protobuf formats
+and Hermes targets, carry `wire_verified` evidence, and have registered codecs
+for protocol 25. The raw-motor codec is included and applies no device-specific
+range limits. See the
 [complete command ledger](command-verification.md) for every key, target, risk
-label, and current blocker.
+label, and live-test state.
 
 Wire verification and live delivery are separate facts. A wire-verified format
 means its inner protobuf, target, and `ChannelRequest` envelope are exact; it

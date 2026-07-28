@@ -83,16 +83,16 @@ def test_collection_inventory_is_exposed() -> None:
     assert all(target in result.stdout for target in KNOWN_TARGETS)
 
 
-def test_control_status_is_explicitly_fail_closed() -> None:
+def test_control_status_reports_complete_wire_codec_inventory() -> None:
     result = runner.invoke(app, ["control", "status"])
     assert result.exit_code == 0
-    assert '"wire_verified_commands": 30' in result.stdout
-    assert '"registered_codecs": 30' in result.stdout
+    assert '"wire_verified_commands": 65' in result.stdout
+    assert '"registered_codecs": 65' in result.stdout
     assert '"live_delivery_verified_commands": 10' in result.stdout
     assert '"stationary_stop_enabled": true' in result.stdout
     assert '"motion_codecs_available": 16' in result.stdout
     assert '"direct_joystick_enabled": true' in result.stdout
-    assert '"remaining_fail_closed_commands": 35' in result.stdout
+    assert '"remaining_fail_closed_commands": 0' in result.stdout
 
 
 def test_control_inventory_is_complete() -> None:
@@ -100,7 +100,7 @@ def test_control_inventory_is_complete() -> None:
     assert result.exit_code == 0
     assert len(result.stdout.strip().splitlines()) == len(COMMAND_REGISTRY.specs)
     assert "user.stop" in result.stdout
-    assert "fail-closed" in result.stdout
+    assert "fail-closed" not in result.stdout
 
 
 def test_unknown_collection_is_rejected_before_network_io() -> None:

@@ -14,6 +14,7 @@ from typing import Protocol
 from uuid import UUID, uuid4
 
 from matic_sdk.models.control import (
+    AddZones,
     CommandReceipt,
     ControlCommand,
     CoverageAction,
@@ -23,16 +24,32 @@ from matic_sdk.models.control import (
     CoverageSetting,
     DrawnCircle,
     JoystickCommand,
+    MapEnvironmentAction,
+    MapEnvironmentCommand,
+    MapPoint,
+    MergeRooms,
     MissionPosture,
     NavigationCommand,
     NavigationMode,
     ObservedEffect,
     ObservedEffectStatus,
     RawMotorCommand,
+    RemoveZones,
+    RenameRoom,
     ReprioritizeAction,
     ReprioritizeCoverageCommand,
+    RoomLabel,
+    ScheduleAction,
+    ScheduleCommand,
+    ScheduleEvent,
+    ScheduleEventKey,
+    SemanticsOverride,
+    SemanticsOverrideKind,
     SettingAction,
     SettingsCommand,
+    SinkSummonLocation,
+    SinkSummonScheduleEvent,
+    SplitRoom,
     StainMode,
     TransportAcknowledgement,
     UserAction,
@@ -416,6 +433,265 @@ class CommandExecutor:
                 stain_mode=stain_mode,
                 circles=tuple(circles),
             ),
+        )
+
+    async def build_partition(
+        self,
+        *,
+        mission_id: int,
+        overwrite: bool = False,
+    ) -> CommandReceipt:
+        """Ask the robot to rebuild room partitions for a mapped mission."""
+
+        return await self.execute(
+            MapEnvironmentCommand(
+                MapEnvironmentAction.BUILD_PARTITION,
+                mission_id=mission_id,
+                overwrite=overwrite,
+            )
+        )
+
+    async def rename_room(
+        self,
+        *,
+        mission_id: int,
+        partition_id: UUID,
+        region_id: UUID,
+        label: RoomLabel | str,
+    ) -> CommandReceipt:
+        """Assign a built-in or custom label to one mapped room."""
+
+        return await self._edit_rooms(
+            mission_id=mission_id,
+            partition_id=partition_id,
+            change=RenameRoom(region_id, label),
+        )
+
+    async def merge_rooms(
+        self,
+        *,
+        mission_id: int,
+        partition_id: UUID,
+        first_region_id: UUID,
+        second_region_id: UUID,
+        label: RoomLabel | str,
+    ) -> CommandReceipt:
+        """Merge two mapped rooms and label the resulting room."""
+
+        return await self._edit_rooms(
+            mission_id=mission_id,
+            partition_id=partition_id,
+            change=MergeRooms(first_region_id, second_region_id, label),
+        )
+
+    async def split_room(
+        self,
+        *,
+        mission_id: int,
+        partition_id: UUID,
+        region_id: UUID,
+        start: MapPoint,
+        end: MapPoint,
+    ) -> CommandReceipt:
+        """Split a mapped room along a mission-relative line."""
+
+        return await self._edit_rooms(
+            mission_id=mission_id,
+            partition_id=partition_id,
+            change=SplitRoom(region_id, start, end),
+        )
+
+    async def _edit_rooms(
+        self,
+        *,
+        mission_id: int,
+        partition_id: UUID,
+        change: RenameRoom | MergeRooms | SplitRoom,
+    ) -> CommandReceipt:
+        return await self.execute(
+            MapEnvironmentCommand(
+                MapEnvironmentAction.EDIT_ROOMS,
+                mission_id=mission_id,
+                partition_id=partition_id,
+                change=change,
+            )
+        )
+
+    async def add_no_go_zones(
+        self,
+        *,
+        mission_id: int,
+        circles: Iterable[DrawnCircle],
+    ) -> CommandReceipt:
+        return await self._edit_zones(
+            action=MapEnvironmentAction.EDIT_NO_GO_ZONE,
+            mission_id=mission_id,
+            change=AddZones(tuple(circles)),
+        )
+
+    async def remove_no_go_zones(
+        self,
+        *,
+        mission_id: int,
+        region_ids: Iterable[int | UUID],
+    ) -> CommandReceipt:
+        return await self._edit_zones(
+            action=MapEnvironmentAction.EDIT_NO_GO_ZONE,
+            mission_id=mission_id,
+            change=RemoveZones(tuple(region_ids)),
+        )
+
+    async def add_drive_only_zones(
+        self,
+        *,
+        mission_id: int,
+        circles: Iterable[DrawnCircle],
+    ) -> CommandReceipt:
+        return await self._edit_zones(
+            action=MapEnvironmentAction.EDIT_DRIVE_ONLY_ZONE,
+            mission_id=mission_id,
+            change=AddZones(tuple(circles)),
+        )
+
+    async def remove_drive_only_zones(
+        self,
+        *,
+        mission_id: int,
+        region_ids: Iterable[int | UUID],
+    ) -> CommandReceipt:
+        return await self._edit_zones(
+            action=MapEnvironmentAction.EDIT_DRIVE_ONLY_ZONE,
+            mission_id=mission_id,
+            change=RemoveZones(tuple(region_ids)),
+        )
+
+    async def add_stairs(
+        self,
+        *,
+        mission_id: int,
+        circles: Iterable[DrawnCircle],
+    ) -> CommandReceipt:
+        return await self._edit_zones(
+            action=MapEnvironmentAction.EDIT_STAIRS,
+            mission_id=mission_id,
+            change=AddZones(tuple(circles)),
+        )
+
+    async def remove_stairs(
+        self,
+        *,
+        mission_id: int,
+        region_ids: Iterable[int | UUID],
+    ) -> CommandReceipt:
+        return await self._edit_zones(
+            action=MapEnvironmentAction.EDIT_STAIRS,
+            mission_id=mission_id,
+            change=RemoveZones(tuple(region_ids)),
+        )
+
+    async def _edit_zones(
+        self,
+        *,
+        action: MapEnvironmentAction,
+        mission_id: int,
+        change: AddZones | RemoveZones,
+    ) -> CommandReceipt:
+        return await self.execute(
+            MapEnvironmentCommand(
+                action,
+                mission_id=mission_id,
+                change=change,
+            )
+        )
+
+    async def set_semantics_override(
+        self,
+        *,
+        mission_id: int,
+        kind: SemanticsOverrideKind,
+        circles: Iterable[DrawnCircle],
+    ) -> CommandReceipt:
+        """Assign surface/wire semantics to one or more drawn map areas."""
+
+        return await self.execute(
+            MapEnvironmentCommand(
+                MapEnvironmentAction.EDIT_SEMANTICS_OVERRIDE,
+                mission_id=mission_id,
+                change=SemanticsOverride(tuple(circles), kind),
+            )
+        )
+
+    async def set_sink_summon_location(
+        self,
+        *,
+        mission_id: int,
+        location: SinkSummonLocation,
+    ) -> CommandReceipt:
+        return await self.execute(
+            MapEnvironmentCommand(
+                MapEnvironmentAction.EDIT_SINK_SUMMON_LOCATION,
+                mission_id=mission_id,
+                change=location,
+            )
+        )
+
+    async def remove_sink_summon_location(
+        self,
+        *,
+        mission_id: int,
+    ) -> CommandReceipt:
+        return await self.execute(
+            MapEnvironmentCommand(
+                MapEnvironmentAction.EDIT_SINK_SUMMON_LOCATION,
+                mission_id=mission_id,
+            )
+        )
+
+    async def add_or_modify_schedule(
+        self,
+        *,
+        key: ScheduleEventKey,
+        event: ScheduleEvent,
+    ) -> CommandReceipt:
+        """Create or replace one regular cleaning schedule."""
+
+        return await self.execute(
+            ScheduleCommand(
+                ScheduleAction.ADD_OR_MODIFY,
+                key=key,
+                event=event,
+            )
+        )
+
+    async def remove_schedule(self, key: ScheduleEventKey) -> CommandReceipt:
+        return await self.execute(ScheduleCommand(ScheduleAction.REMOVE, key=key))
+
+    async def toggle_schedule(self, key: ScheduleEventKey) -> CommandReceipt:
+        return await self.execute(ScheduleCommand(ScheduleAction.TOGGLE, key=key))
+
+    async def generate_suggested_schedule(self) -> CommandReceipt:
+        return await self.execute(ScheduleCommand(ScheduleAction.GENERATE_SUGGESTED))
+
+    async def add_or_modify_sink_summon_schedule(
+        self,
+        *,
+        key: ScheduleEventKey,
+        event: SinkSummonScheduleEvent,
+    ) -> CommandReceipt:
+        return await self.execute(
+            ScheduleCommand(
+                ScheduleAction.SINK_SUMMON_ADD_OR_MODIFY,
+                key=key,
+                sink_event=event,
+            )
+        )
+
+    async def remove_sink_summon_schedule(
+        self,
+        key: ScheduleEventKey,
+    ) -> CommandReceipt:
+        return await self.execute(
+            ScheduleCommand(ScheduleAction.SINK_SUMMON_REMOVE, key=key)
         )
 
     async def set_binary_setting(

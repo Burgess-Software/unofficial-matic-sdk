@@ -2,10 +2,10 @@
 
 Control evidence has two independent axes. The codec evidence levels are
 `static_type`, `static_fields`, `payload_verified`, and `wire_verified`;
-`wire_verified` is necessary but safety policy can still disable a codec. The separate
-`live_delivery_verified` flag means this SDK sent one bounded request to an
-authenticated robot and received the expected Hermes acknowledgement. Neither
-label alone claims a physical effect.
+the current protocol-25 inventory has reached `wire_verified` for every
+documented command. The separate `live_delivery_verified` flag means this SDK
+sent one bounded request to an authenticated robot and received the expected
+Hermes acknowledgement. Neither label alone claims a physical effect.
 
 Read-side features use the broader terms verified live, verified offline,
 static, and experimental. Experimental means compatibility or service evidence
@@ -32,9 +32,9 @@ command families. The Hermes RPC and typed client-side models are static
 evidence. Each encoder in this SDK must carry its own verification level.
 
 The registry documents 65 command intents and exact Hermes targets for each.
-Thirty have exact wire formats and registered codecs. Thirty-five remain
-fail-closed because their inner protobuf encoding is incomplete. Raw-motor
-encoding is exact and directly available without device-specific range limits.
+All 65 have exact wire formats and registered codecs for protocol 25.
+Raw-motor encoding is exact and directly available without device-specific
+range limits.
 The [command verification ledger](command-verification.md)
 records every target, evidence level, live state, risk label, and blocker.
 
@@ -63,7 +63,7 @@ bounded one-room Quick Vacuum run verified normal coverage delivery and the
 friendly active plan/session decoder before an acknowledged Stop and Dock
 returned the robot to charging.
 
-The other 20 exact formats have offline wire evidence only. No raw-actuation,
+The other 55 exact formats have offline wire evidence only. No raw-actuation,
 destructive, network-changing, update, reboot, or shutdown command was
 live-tested. Raw-motor encoding is registered but has not been exercised live.
 All enabled typed commands are callable directly; risk classifications are

@@ -126,11 +126,19 @@ claim of access to the robot's full SLAM volume, TSDF, ESDF, or triangle mesh.
 
 Static tracing recovered 65 command intents and their Hermes targets. Continued
 tracing through concrete conversion and generated Prost encoding paths, plus
-independent reconstruction and byte-level golden fixtures, produced 30 exact
-wire formats, all of which have registered codecs. The public UniFFI variant
-numbers were not protobuf tags; the trace
-followed their lift into Rust enum discriminants, concrete protocol types, and
-generated encoders.
+independent reconstruction and byte-level golden fixtures, produced exact wire
+formats for all 65, all of which have registered codecs. The public UniFFI
+variant numbers were not protobuf tags; the trace followed their lift into
+Rust enum discriminants, concrete protocol types, and generated encoders.
+
+For the remaining map and schedule formats, the official ARM64 native
+conversion and serialization functions were executed offline against
+synthetic values under emulation. The resulting payloads exposed nested
+oneofs, enum values, coordinate transforms, timezone and duration fields,
+generated goal IDs, and two distinct UUID representations: UUIDs created
+inside Rust and UUIDs lifted through UniFFI do not use the same byte ordering.
+The schedule implementation reproduces a complete 1,905-byte native output
+vector exactly. No command was sent to a robot during this proof work.
 
 Independent reconstruction established `ChannelRequest` as a channel-name
 field plus encoded value, with `hermes-target` carrying the same channel name.
@@ -141,14 +149,14 @@ from an unknown or guessed payload.
 
 Exact wire evidence is necessary to register an encoder, and it is not live
 delivery evidence. The exact raw-motor encoder is registered with no
-device-specific range limits. Commands with incomplete encodings fail before
-opening a mutating stream. Every enabled typed command is callable directly;
-registry risk labels are informational and add no confirmation or capability
-gate. Direct joystick calls use the exact encoder while retaining the
-executor's TLS, protocol, codec, audit, and no-retry boundaries. Each call
-sends once; there is no SDK-managed watchdog or automatic Stop. A bounded live
-test on 2026-07-28 produced 25 acknowledged sends with no failures and a
-docked-to-ready state transition.
+device-specific range limits. Unknown commands and unsupported protocol
+versions fail before opening a mutating stream. Every enabled typed command is
+callable directly; registry risk labels are informational and add no
+confirmation or capability gate. Direct joystick calls use the exact encoder
+while retaining the executor's TLS, protocol, codec, audit, and no-retry
+boundaries. Each call sends once; there is no SDK-managed watchdog or automatic
+Stop. A bounded live test on 2026-07-28 produced 25 acknowledged sends with no
+failures and a docked-to-ready state transition.
 
 The SDK implementations of Stop, StayPut, Pause, child lock, pet-waste
 avoidance, and voice were exercised against an owner-authorized robot on

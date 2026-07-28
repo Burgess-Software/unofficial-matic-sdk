@@ -30,13 +30,16 @@ service without a cloud relay.
 - Run normal room coverage through a typed API exercised against a real robot.
 - Reprioritize an active plan or clean a drawn dry-stain/wet-spill area through
   typed, wire-verified APIs.
+- Build room partitions; rename, merge, or split rooms; and manage no-go,
+  drive-only, stair, semantics, and sink-summon map data.
+- Create, modify, toggle, or remove regular and sink-summon schedules.
 - Send direct cleaning-mechanism setpoints through the wire-verified raw-motor
   codec; this path has not been exercised live and applies no device-specific
   range limits.
 
 The [command verification ledger](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/command-verification.md) shows exactly
-which controls were exercised live, which have offline wire proof, and which
-remain unavailable.
+which controls were exercised live and which currently have offline wire proof
+only. All 65 documented protocol-25 commands have registered codecs.
 
 ## Quick start
 
@@ -403,10 +406,9 @@ asyncio.run(run_one_motion_command())
 ```
 
 Normal coverage supports vacuum, mop, or both plus Quick/Standard coverage.
-Stain mode reproduces the official DryStain and WetSpill goal plans. As an SDK
-safety constraint, it requires at least one circle with a positive finite
-radius even though the recovered native serializer itself does not establish
-those input checks.
+Stain mode reproduces the official DryStain and WetSpill goal plans. The typed
+model rejects empty or non-positive drawn circles so it cannot serialize
+malformed geometry.
 
 ### Reprioritize active coverage
 
@@ -442,6 +444,89 @@ Use `snapshot.region_ids` to show the currently scheduled rooms. Use
 `ReprioritizeAction.SKIP` to remove the current region block; Skip does not need
 `selected_region_id`. The read is safe while the robot is idle and returns
 `None`. The official Add and Redo reprioritization helpers are not exposed yet.
+
+### Edit rooms and map zones
+
+Map commands use the same mission coordinates and UUIDs returned by map
+collections. The convenience methods cover partition building, room
+rename/merge/split, no-go and drive-only zones, stairs, semantic overrides, and
+the sink-summon location:
+
+```python
+from uuid import UUID
+
+from matic_sdk import DrawnCircle, RoomLabel
+
+
+async def edit_one_map_item(robot) -> None:
+    await robot.commands.rename_room(
+        mission_id=42,
+        partition_id=UUID("10213243-5465-7687-98a9-babcbddcedfe"),
+        region_id=UUID("00112233-4455-6677-8899-aabbccddeeff"),
+        label=RoomLabel.KITCHEN,
+    )
+
+    # Other typed operations include:
+    # await robot.commands.build_partition(mission_id=42, overwrite=False)
+    # await robot.commands.add_no_go_zones(
+    #     mission_id=42,
+    #     circles=[DrawnCircle(1.0, 2.0, 0.4)],
+    # )
+```
+
+These persistent commands have exact offline native-serializer wire proof but
+have not been exercised against a live robot through this SDK.
+
+### Create a cleaning schedule
+
+Regular schedules support mapped rooms or custom drawn areas, Sunday through
+Saturday, vacuum/mop/both modes, Quick/Standard/legacy Deep vacuum settings,
+ordered goals, names, and enabled/disabled/suggested states:
+
+```python
+from uuid import UUID, uuid4
+
+from matic_sdk import (
+    CoverageCleaningMode,
+    ScheduleCoverageSetting,
+    ScheduleEvent,
+    ScheduleEventKey,
+    ScheduleTime,
+    StandardScheduleTarget,
+    Weekday,
+)
+
+
+async def add_weekday_schedule(robot) -> None:
+    key = ScheduleEventKey(mission_id=42, event_id=uuid4())
+    event = ScheduleEvent(
+        name="Weekday morning",
+        weekdays=(
+            Weekday.MONDAY,
+            Weekday.TUESDAY,
+            Weekday.WEDNESDAY,
+            Weekday.THURSDAY,
+            Weekday.FRIDAY,
+        ),
+        time=ScheduleTime(
+            seconds_since_midnight=8 * 60 * 60,
+            timezone_id="America/Chicago",
+            utc_offset_seconds=-5 * 60 * 60,
+        ),
+        target=StandardScheduleTarget(
+            (UUID("00112233-4455-6677-8899-aabbccddeeff"),)
+        ),
+        partition_id=UUID("10213243-5465-7687-98a9-babcbddcedfe"),
+        cleaning_mode=CoverageCleaningMode.BOTH,
+        vacuum_setting=ScheduleCoverageSetting.STANDARD,
+    )
+    await robot.commands.add_or_modify_schedule(key=key, event=event)
+```
+
+Use `toggle_schedule(key)` or `remove_schedule(key)` for an existing event.
+Sink-summon schedules use `SinkSummonScheduleEvent` and
+`add_or_modify_sink_summon_schedule()`. Schedule writes have exact offline wire
+proof but have not been exercised live.
 
 ### Change a supported preference
 

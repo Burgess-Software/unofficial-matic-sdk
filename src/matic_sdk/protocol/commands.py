@@ -1,7 +1,8 @@
 """Fail-closed command codec registry for Hermes protocol version 25.
 
-Static analysis recovered command type names and exact payloads for a small
-verified subset. Independent protocol reconstruction, official-client
+Static analysis recovered command type names, and offline execution of the
+official native serializers established exact payloads for all 65 documented
+protocol-25 intents. Independent protocol reconstruction, official-client
 evidence, and live testing established the surrounding ``ChannelRequest`` wire
 shape and response semantics. The default registry exposes only commands whose
 target and complete payload are proven; callers never get a guessing or
@@ -20,6 +21,7 @@ from typing import Protocol
 from uuid import UUID, uuid4
 
 from matic_sdk.models.control import (
+    AddZones,
     CleaningAction,
     CleaningCommand,
     CleaningFloor,
@@ -37,29 +39,51 @@ from matic_sdk.models.control import (
     CoverageGoalSpec,
     CoveragePlanGoal,
     CoverageSetting,
+    CustomScheduleTarget,
     DeviceAction,
     DeviceCommand,
     DrawnCircle,
     ExplicitFloorCleaningMode,
     JoystickCommand,
+    JukeboxTrack,
     LifecycleAction,
     LifecycleCommand,
     MapEnvironmentAction,
     MapEnvironmentCommand,
+    MapPoint,
+    MediaAction,
     MediaCommand,
+    MergeRooms,
     NavigationCommand,
     NavigationMode,
     RawMotorCommand,
+    RemoveZones,
+    RenameRoom,
     ReprioritizeAction,
     ReprioritizeCoverageCommand,
+    RoomLabel,
     ScheduleAction,
     ScheduleCommand,
+    ScheduleCoverageSetting,
+    ScheduleDuration,
+    ScheduleEnabledState,
+    ScheduleEvent,
+    ScheduleEventKey,
+    ScheduleTime,
+    SemanticsOverride,
+    SemanticsOverrideKind,
     SettingAction,
     SettingsCommand,
+    SinkSummonLocation,
+    SinkSummonScheduleEvent,
+    SplitRoom,
     StainMode,
+    StandardScheduleTarget,
+    TelemetryAction,
     TelemetryCommand,
     UserAction,
     UserCommand,
+    Weekday,
     WifiAction,
     WifiCommand,
 )
@@ -67,12 +91,18 @@ from matic_sdk.protocol.wire import (
     encode_bytes_field,
     encode_fixed32_field,
     encode_fixed64_field,
+    encode_varint,
     encode_varint_field,
 )
 
 DEFAULT_PROTOCOL_VERSION = 25
 SUPPORTED_PROTOCOL_VERSIONS = frozenset({DEFAULT_PROTOCOL_VERSION})
 USER_COMMAND_HERMES_TARGET = "user_command"
+_NATIVE_SERIALIZER_EVIDENCE = (
+    "Matic Android 1.151.0 generated binding and exact Hermes target; "
+    "official libmegazord.so ARM64 serializer executed offline against "
+    "synthetic values to produce checked golden wire vectors; not live-tested"
+)
 
 _BINARY_SETTING_TARGETS = MappingProxyType(
     {
@@ -380,7 +410,7 @@ class _VerifiedManualCleanCodec:
 
 @dataclass(frozen=True, slots=True)
 class _VerifiedBinarySettingCodec:
-    """Exact encoder for one native ``bool`` setting command."""
+    """Exact encoder for one native scalar-bool setting command."""
 
     action: SettingAction
     target: str
@@ -393,9 +423,231 @@ class _VerifiedBinarySettingCodec:
             raise TypeError(f"codec expects SettingsCommand({self.action.value})")
         if not isinstance(command.value, bool):
             raise ValueError(f"{command.command_key} requires a boolean value")
-        # Native command records contain one bool. Prost encodes that as
-        # protobuf field 1, wire type 0.
-        return EncodedCommand(bytes((0x08, int(command.value))), self.target)
+        # These settings use a non-optional prost bool: false is the protobuf
+        # default and is therefore omitted by the official native serializer.
+        payload = b"\x08\x01" if command.value else b""
+        return EncodedCommand(payload, self.target)
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedJukeboxCodec:
+    """Exact encoder for the optional seasonal track enum."""
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        if (
+            not isinstance(command, SettingsCommand)
+            or command.action is not SettingAction.JUKEBOX
+        ):
+            raise TypeError("codec expects SettingsCommand(jukebox)")
+        if command.value is None:
+            payload = b""
+        elif isinstance(command.value, JukeboxTrack):
+            values = {
+                JukeboxTrack.OH_HANUKKAH: 0,
+                JukeboxTrack.DECK_THE_HALLS: 1,
+                JukeboxTrack.JINGLE_BELLS: 2,
+            }
+            # The optional enum is explicitly present, including enum value 0.
+            payload = encode_varint_field(1, values[command.value])
+        else:
+            raise ValueError("settings.jukebox requires JukeboxTrack or None")
+        return EncodedCommand(payload, "jukebox_command")
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedWifiUpdateCodec:
+    """Exact compatibility encoder for connect and forget Wi-Fi commands."""
+
+    action: WifiAction
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        if not isinstance(command, WifiCommand) or command.action is not self.action:
+            raise TypeError(f"codec expects WifiCommand({self.action.value})")
+        if not isinstance(command.ssid, str):
+            raise ValueError(f"{command.command_key} requires ssid: str")
+
+        # The Android client deliberately populates both the current SSID field
+        # (2) and its compatibility copy (6).
+        kind = 1 if self.action is WifiAction.CONNECT else 3
+        payload = encode_varint_field(1, kind) + encode_bytes_field(
+            2, command.ssid.encode()
+        )
+        if self.action is WifiAction.CONNECT:
+            if command.passphrase is not None and not isinstance(
+                command.passphrase, str
+            ):
+                raise ValueError("wifi.connect requires passphrase: str | None")
+            if command.passphrase is not None:
+                payload += encode_bytes_field(3, command.passphrase.encode())
+        elif command.passphrase is not None:
+            raise ValueError("wifi.forget does not accept passphrase")
+        payload += encode_bytes_field(6, command.ssid.encode())
+        return EncodedCommand(payload, "wifi_update_command")
+
+
+def _require_device_action(
+    command: ControlCommand,
+    action: DeviceAction,
+) -> DeviceCommand:
+    if not isinstance(command, DeviceCommand) or command.action is not action:
+        raise TypeError(f"codec expects DeviceCommand({action.value})")
+    return command
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedDeviceRenameCodec:
+    """Exact field-1 string encoder for the robot display name."""
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        device = _require_device_action(command, DeviceAction.RENAME)
+        if not isinstance(device.new_name, str):
+            raise ValueError("device.rename requires new_name: str")
+        if any(
+            value is not None
+            for value in (
+                device.enabled,
+                device.discoverable_seconds,
+                device.retain_user_data,
+            )
+        ):
+            raise ValueError("device.rename accepts only new_name")
+        return EncodedCommand(
+            encode_bytes_field(1, device.new_name.encode()),
+            "new_bot_name",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedDiscoverabilityCodec:
+    """Exact oneof encoder for timed enable and disable requests."""
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        device = _require_device_action(command, DeviceAction.DISCOVERABILITY)
+        if device.new_name is not None or device.retain_user_data is not None:
+            raise ValueError(
+                "device.discoverability accepts only enabled and discoverable_seconds"
+            )
+        if not isinstance(device.enabled, bool):
+            raise ValueError("device.discoverability requires enabled: bool")
+        if device.enabled:
+            seconds = device.discoverable_seconds
+            if (
+                isinstance(seconds, bool)
+                or not isinstance(seconds, int)
+                or not 0 <= seconds <= 0xFFFFFFFFFFFFFFFF
+            ):
+                raise ValueError(
+                    "enabled device.discoverability requires discoverable_seconds: u64"
+                )
+            payload = encode_varint_field(1, seconds)
+        else:
+            if device.discoverable_seconds is not None:
+                raise ValueError(
+                    "disabled device.discoverability does not accept "
+                    "discoverable_seconds"
+                )
+            payload = encode_bytes_field(2, b"")
+        return EncodedCommand(payload, "set_device_discoverable")
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedDeviceBooleanCodec:
+    """Exact scalar-bool encoder for a device command."""
+
+    action: DeviceAction
+    target: str
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        device = _require_device_action(command, self.action)
+        if not isinstance(device.enabled, bool):
+            raise ValueError(f"{device.command_key} requires enabled: bool")
+        if any(
+            value is not None
+            for value in (
+                device.new_name,
+                device.discoverable_seconds,
+                device.retain_user_data,
+            )
+        ):
+            raise ValueError(f"{device.command_key} accepts only enabled")
+        payload = b"\x08\x01" if device.enabled else b""
+        return EncodedCommand(payload, self.target)
+
+
+def _require_telemetry_action(
+    command: ControlCommand,
+    action: TelemetryAction,
+) -> TelemetryCommand:
+    if not isinstance(command, TelemetryCommand) or command.action is not action:
+        raise TypeError(f"codec expects TelemetryCommand({action.value})")
+    return command
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedUploaderConfigCodec:
+    """Exact explicitly-present bool encoder for telemetry opt-in."""
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        telemetry = _require_telemetry_action(
+            command,
+            TelemetryAction.UPLOADER_CONFIG,
+        )
+        if not isinstance(telemetry.enabled, bool):
+            raise ValueError("telemetry.uploader_config requires enabled: bool")
+        if telemetry.device_id is not None or telemetry.app_bundle is not None:
+            raise ValueError("telemetry.uploader_config accepts only enabled")
+        return EncodedCommand(
+            bytes((0x08, int(telemetry.enabled))),
+            "uploader_config_command",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedTelemetryBooleanCodec:
+    """Exact scalar-bool encoder for a telemetry permission."""
+
+    action: TelemetryAction
+    target: str
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        telemetry = _require_telemetry_action(command, self.action)
+        if not isinstance(telemetry.enabled, bool):
+            raise ValueError(f"{telemetry.command_key} requires enabled: bool")
+        if telemetry.device_id is not None or telemetry.app_bundle is not None:
+            raise ValueError(f"{telemetry.command_key} accepts only enabled")
+        payload = b"\x08\x01" if telemetry.enabled else b""
+        return EncodedCommand(payload, self.target)
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedPushNotificationCodec:
+    """Exact four-field compatibility encoder used by the Android app."""
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        telemetry = _require_telemetry_action(
+            command,
+            TelemetryAction.PUSH_NOTIFICATION_SUBSCRIPTION,
+        )
+        if telemetry.enabled is not None:
+            raise ValueError(
+                "telemetry.push_notification_subscription does not accept enabled"
+            )
+        if not isinstance(telemetry.device_id, str):
+            raise ValueError(
+                "telemetry.push_notification_subscription requires device_id: str"
+            )
+        if not isinstance(telemetry.app_bundle, str):
+            raise ValueError(
+                "telemetry.push_notification_subscription requires app_bundle: str"
+            )
+        payload = b"".join(
+            (
+                encode_bytes_field(1, telemetry.device_id.encode()),
+                encode_bytes_field(3, telemetry.app_bundle.encode()),
+                encode_varint_field(4, 1),
+            )
+        )
+        return EncodedCommand(payload, "subscribe_push_notifications")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1051,6 +1303,521 @@ class _VerifiedRawMotorCodec:
         return EncodedCommand(payload, "motor_command")
 
 
+def _require_map_action(
+    command: ControlCommand,
+    action: MapEnvironmentAction,
+) -> MapEnvironmentCommand:
+    if not isinstance(command, MapEnvironmentCommand) or command.action is not action:
+        raise TypeError(f"codec expects MapEnvironmentCommand({action.value})")
+    return command
+
+
+def _u32(value: object, *, field_name: str) -> int:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 0 <= value <= 0xFFFFFFFF
+    ):
+        raise ValueError(f"{field_name} must be a u32")
+    return value
+
+
+def _mission_id_message(mission_id: int) -> bytes:
+    return encode_fixed32_field(2, mission_id) if mission_id != 0 else b""
+
+
+def _generated_full_uuid(value: UUID) -> bytes:
+    """Encode a UUID generated inside the native Rust command conversion."""
+
+    if not isinstance(value, UUID):
+        raise TypeError("generated command identifiers must be UUID values")
+    high = value.int >> 64
+    low = value.int & ((1 << 64) - 1)
+    fixed128 = b"".join(
+        (
+            encode_fixed64_field(1, high) if high != 0 else b"",
+            encode_fixed64_field(2, low) if low != 0 else b"",
+        )
+    )
+    # The generated-ID representation retains both the canonical byte string
+    # and its fixed128 compatibility copy.
+    return encode_bytes_field(1, value.bytes) + encode_bytes_field(2, fixed128)
+
+
+def _ffi_full_uuid(value: UUID) -> bytes:
+    """Encode a UUID that entered Rust through the Android UniFFI boundary."""
+
+    if not isinstance(value, UUID):
+        raise ValueError("map and schedule identifiers must be UUID values")
+    raw = value.bytes
+    ffi_bytes = raw[:8][::-1] + raw[8:][::-1]
+    first = int.from_bytes(raw[:8], "little")
+    second = int.from_bytes(raw[8:], "little")
+    fixed128 = b"".join(
+        (
+            encode_fixed64_field(1, first) if first != 0 else b"",
+            encode_fixed64_field(2, second) if second != 0 else b"",
+        )
+    )
+    return encode_bytes_field(1, ffi_bytes) + encode_bytes_field(2, fixed128)
+
+
+def _ffi_partition_id(value: UUID) -> bytes:
+    return encode_bytes_field(1, _ffi_full_uuid(value))
+
+
+def _ffi_region_id(value: UUID) -> bytes:
+    return encode_bytes_field(2, _ffi_full_uuid(value))
+
+
+def _map_point(point: MapPoint, *, field_name: str) -> bytes:
+    if not isinstance(point, MapPoint):
+        raise ValueError(f"{field_name} must be a MapPoint")
+    x_meters = _float32_value(point.x_meters, field_name=f"{field_name}.x_meters")
+    y_meters = _float32_value(point.y_meters, field_name=f"{field_name}.y_meters")
+    return _encode_float32_field(1, -y_meters) + _encode_float32_field(2, -x_meters)
+
+
+def _drawn_area(
+    circles: object,
+    *,
+    field_name: str,
+) -> bytes:
+    if not isinstance(circles, tuple) or not circles:
+        raise ValueError(f"{field_name} must be a non-empty tuple")
+    encoded_circles: list[bytes] = []
+    for index, circle in enumerate(circles):
+        if not isinstance(circle, DrawnCircle):
+            raise ValueError(f"{field_name} must contain DrawnCircle values")
+        x_meters = _float32_value(
+            circle.x_meters,
+            field_name=f"{field_name}[{index}].x_meters",
+        )
+        y_meters = _float32_value(
+            circle.y_meters,
+            field_name=f"{field_name}[{index}].y_meters",
+        )
+        radius_meters = _float32_value(
+            circle.radius_meters,
+            field_name=f"{field_name}[{index}].radius_meters",
+        )
+        if radius_meters <= 0:
+            raise ValueError(f"{field_name} radii must be greater than zero")
+        point = _encode_float32_field(1, -y_meters) + _encode_float32_field(
+            2, -x_meters
+        )
+        point_circle = encode_bytes_field(1, point) + encode_fixed32_field(
+            2,
+            _float32_bits(
+                radius_meters,
+                field_name=f"{field_name}[{index}].radius_meters",
+            ),
+        )
+        encoded_circles.append(encode_bytes_field(1, point_circle))
+    return encode_bytes_field(2, b"".join(encoded_circles))
+
+
+def _map_command_has_extra_fields(
+    command: MapEnvironmentCommand,
+    *,
+    allow_partition: bool = False,
+    allow_change: bool = False,
+    allow_overwrite: bool = False,
+    allow_name: bool = False,
+) -> bool:
+    return bool(
+        command.change_set
+        or (command.partition_id is not None and not allow_partition)
+        or (command.change is not None and not allow_change)
+        or (command.overwrite is not None and not allow_overwrite)
+        or (command.name is not None and not allow_name)
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedBuildPartitionCodec:
+    """Exact native partition-build command, including its generated ID."""
+
+    command_id_factory: Callable[[], UUID] = uuid4
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        build = _require_map_action(command, MapEnvironmentAction.BUILD_PARTITION)
+        mission_id = _u32(
+            build.mission_id,
+            field_name="map.build_partition mission_id",
+        )
+        if _map_command_has_extra_fields(build, allow_overwrite=True):
+            raise ValueError(
+                "map.build_partition accepts only mission_id and overwrite"
+            )
+        if not isinstance(build.overwrite, bool):
+            raise ValueError("map.build_partition requires overwrite: bool")
+        command_id = self.command_id_factory()
+        if not isinstance(command_id, UUID):
+            raise TypeError("map command_id_factory must return UUID")
+        operation = encode_bytes_field(1, _generated_full_uuid(command_id))
+        options = encode_bytes_field(1, encode_bytes_field(1, b""))
+        if build.overwrite:
+            options += encode_varint_field(2, 1)
+        payload = b"".join(
+            (
+                encode_bytes_field(1, _mission_id_message(mission_id)),
+                encode_bytes_field(2, operation),
+                encode_bytes_field(3, options),
+            )
+        )
+        return EncodedCommand(payload, "build_regions")
+
+
+def _room_label(value: object) -> bytes:
+    if isinstance(value, RoomLabel):
+        number = {
+            RoomLabel.BATHROOM: 0,
+            RoomLabel.BEDROOM: 1,
+            RoomLabel.DINING_ROOM: 2,
+            RoomLabel.LIVING_ROOM: 3,
+            RoomLabel.KITCHEN: 4,
+            RoomLabel.HALLWAY: 5,
+        }[value]
+        return encode_varint_field(1, number)
+    if isinstance(value, str):
+        return encode_bytes_field(2, value.encode())
+    raise ValueError("room label must be a RoomLabel or custom string")
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedEditRoomsCodec:
+    """Exact rename, merge, and split map-room encoder."""
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        edit = _require_map_action(command, MapEnvironmentAction.EDIT_ROOMS)
+        mission_id = _u32(edit.mission_id, field_name="map.edit_rooms mission_id")
+        if not isinstance(edit.partition_id, UUID):
+            raise ValueError("map.edit_rooms requires partition_id: UUID")
+        if _map_command_has_extra_fields(
+            edit,
+            allow_partition=True,
+            allow_change=True,
+        ):
+            raise ValueError(
+                "map.edit_rooms accepts mission_id, partition_id, and a room edit"
+            )
+
+        action = edit.change
+        if isinstance(action, RenameRoom):
+            if not isinstance(action.region_id, UUID):
+                raise ValueError("RenameRoom requires region_id: UUID")
+            action_payload = encode_bytes_field(
+                1,
+                _ffi_region_id(action.region_id),
+            ) + encode_bytes_field(
+                2,
+                _room_label(action.label),
+            )
+            action_field = 5
+        elif isinstance(action, MergeRooms):
+            if not isinstance(action.first_region_id, UUID) or not isinstance(
+                action.second_region_id, UUID
+            ):
+                raise ValueError("MergeRooms requires two UUID region identifiers")
+            first = _ffi_region_id(action.first_region_id)
+            second = _ffi_region_id(action.second_region_id)
+            action_payload = b"".join(
+                (
+                    encode_bytes_field(1, first),
+                    encode_bytes_field(2, second),
+                    encode_bytes_field(3, _room_label(action.label)),
+                    encode_bytes_field(4, first),
+                    encode_bytes_field(4, second),
+                )
+            )
+            action_field = 6
+        elif isinstance(action, SplitRoom):
+            if not isinstance(action.region_id, UUID):
+                raise ValueError("SplitRoom requires region_id: UUID")
+            line = encode_bytes_field(
+                1,
+                _map_point(action.start, field_name="SplitRoom.start"),
+            ) + encode_bytes_field(
+                2,
+                _map_point(action.end, field_name="SplitRoom.end"),
+            )
+            action_payload = encode_bytes_field(
+                1,
+                _ffi_region_id(action.region_id),
+            ) + encode_bytes_field(2, line)
+            action_field = 7
+        else:
+            raise ValueError(
+                "map.edit_rooms requires RenameRoom, MergeRooms, or SplitRoom"
+            )
+
+        payload = b"".join(
+            (
+                encode_bytes_field(1, _mission_id_message(mission_id)),
+                encode_bytes_field(4, _ffi_partition_id(edit.partition_id)),
+                encode_bytes_field(action_field, action_payload),
+            )
+        )
+        return EncodedCommand(payload, "rename_area_command")
+
+
+def _compact_zone_region_id(value: int | UUID, *, field_name: str) -> int:
+    if isinstance(value, UUID):
+        raw = value.bytes
+        if raw[:8] != b"\0" * 8 or raw[12:] != b"\0" * 4:
+            raise ValueError(
+                f"{field_name} UUID must use the native compact u32 layout"
+            )
+        return int.from_bytes(raw[8:12], "little")
+    return _u32(value, field_name=field_name)
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedZoneEditCodec:
+    """Exact shared encoder for no-go, drive-only, and stair zones."""
+
+    action: MapEnvironmentAction
+    target: str
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        edit = _require_map_action(command, self.action)
+        mission_id = _u32(edit.mission_id, field_name=f"{edit.command_key} mission_id")
+        if _map_command_has_extra_fields(edit, allow_change=True):
+            raise ValueError(f"{edit.command_key} accepts mission_id and a zone edit")
+        if isinstance(edit.change, AddZones):
+            change = encode_bytes_field(
+                4,
+                _drawn_area(
+                    edit.change.circles,
+                    field_name=f"{edit.command_key} circles",
+                ),
+            )
+        elif isinstance(edit.change, RemoveZones):
+            if (
+                not isinstance(edit.change.region_ids, tuple)
+                or not edit.change.region_ids
+            ):
+                raise ValueError(
+                    f"{edit.command_key} removal requires region identifiers"
+                )
+            packed = b"".join(
+                encode_varint(
+                    _compact_zone_region_id(
+                        value,
+                        field_name=f"{edit.command_key} region_ids[{index}]",
+                    )
+                )
+                for index, value in enumerate(edit.change.region_ids)
+            )
+            change = encode_bytes_field(3, packed)
+        else:
+            raise ValueError(f"{edit.command_key} requires AddZones or RemoveZones")
+        payload = (
+            encode_bytes_field(
+                1,
+                _mission_id_message(mission_id),
+            )
+            + change
+        )
+        return EncodedCommand(payload, self.target)
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedSemanticsOverrideCodec:
+    """Exact map surface/wire-semantics override encoder."""
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        edit = _require_map_action(
+            command,
+            MapEnvironmentAction.EDIT_SEMANTICS_OVERRIDE,
+        )
+        mission_id = _u32(
+            edit.mission_id,
+            field_name="map.edit_semantics_override mission_id",
+        )
+        if _map_command_has_extra_fields(edit, allow_change=True):
+            raise ValueError(
+                "map.edit_semantics_override accepts mission_id and SemanticsOverride"
+            )
+        if not isinstance(edit.change, SemanticsOverride):
+            raise ValueError("map.edit_semantics_override requires SemanticsOverride")
+        if not isinstance(edit.change.kind, SemanticsOverrideKind):
+            raise ValueError("semantics override kind must be an exact enum")
+        kind = {
+            SemanticsOverrideKind.UNSET: 0,
+            SemanticsOverrideKind.HARDFLOOR_ALLOW_WIRE: 1,
+            SemanticsOverrideKind.CARPET_ALLOW_WIRE: 2,
+            SemanticsOverrideKind.HARDFLOOR_DISALLOW_WIRE: 3,
+            SemanticsOverrideKind.CARPET_DISALLOW_WIRE: 4,
+        }[edit.change.kind]
+        override = (
+            encode_varint_field(2, kind) if kind != 0 else b""
+        ) + encode_bytes_field(
+            3,
+            _drawn_area(
+                edit.change.circles,
+                field_name="map.edit_semantics_override circles",
+            ),
+        )
+        payload = encode_bytes_field(
+            1,
+            _mission_id_message(mission_id),
+        ) + encode_bytes_field(2, override)
+        return EncodedCommand(payload, "semantics_override")
+
+
+def _sink_posture(location: SinkSummonLocation) -> bytes:
+    x_meters = _float32_value(
+        location.x_meters,
+        field_name="sink location x_meters",
+    )
+    y_meters = _float32_value(
+        location.y_meters,
+        field_name="sink location y_meters",
+    )
+    yaw_radians = _float32_value(
+        location.yaw_radians,
+        field_name="sink location yaw_radians",
+    )
+    orientation = _encode_float32_field(
+        1, -math.sin(yaw_radians)
+    ) + _encode_float32_field(2, -math.cos(yaw_radians))
+    return b"".join(
+        (
+            _encode_float32_field(1, -y_meters),
+            _encode_float32_field(2, -x_meters),
+            encode_bytes_field(4, orientation),
+        )
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedSinkSummonLocationCodec:
+    """Exact add/modify and remove sink-summon map-location encoder."""
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        edit = _require_map_action(
+            command,
+            MapEnvironmentAction.EDIT_SINK_SUMMON_LOCATION,
+        )
+        mission_id = _u32(
+            edit.mission_id,
+            field_name="map.edit_sink_summon_location mission_id",
+        )
+        if _map_command_has_extra_fields(edit, allow_change=True):
+            raise ValueError(
+                "map.edit_sink_summon_location accepts mission_id and an "
+                "optional SinkSummonLocation"
+            )
+        mission = _mission_id_message(mission_id)
+        if edit.change is None:
+            payload = encode_bytes_field(2, mission)
+        elif isinstance(edit.change, SinkSummonLocation):
+            location = encode_bytes_field(1, mission) + encode_bytes_field(
+                2,
+                _sink_posture(edit.change),
+            )
+            payload = encode_bytes_field(1, location)
+        else:
+            raise ValueError(
+                "map.edit_sink_summon_location requires SinkSummonLocation or None"
+            )
+        return EncodedCommand(payload, "edit_sink_summon_location")
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedFloorCodec:
+    """Exact floor canonicalization and rename encoders."""
+
+    action: MapEnvironmentAction
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        floor = _require_map_action(command, self.action)
+        if self.action is MapEnvironmentAction.CANONICALIZE:
+            if _map_command_has_extra_fields(floor):
+                raise ValueError("map.canonicalize accepts only optional mission_id")
+            if floor.mission_id is None:
+                # CanonicalizeCommand.NextNoncanonicalMission.
+                payload = encode_bytes_field(1, encode_bytes_field(2, b""))
+            else:
+                mission_id = _u32(
+                    floor.mission_id,
+                    field_name="map.canonicalize mission_id",
+                )
+                command_payload = encode_bytes_field(
+                    1,
+                    _mission_id_message(mission_id),
+                )
+                payload = encode_bytes_field(1, command_payload)
+        else:
+            mission_id = _u32(
+                floor.mission_id,
+                field_name="map.rename mission_id",
+            )
+            if any(
+                value is not None
+                for value in (
+                    floor.partition_id,
+                    floor.change,
+                    floor.overwrite,
+                )
+            ):
+                raise ValueError("map.rename accepts only mission_id and name")
+            if floor.name is not None and floor.change_set:
+                raise ValueError("map.rename name cannot be supplied twice")
+            name: object
+            if floor.name is not None:
+                name = floor.name
+            elif set(floor.change_set) == {"name"}:
+                name = floor.change_set["name"]
+            else:
+                raise ValueError("map.rename requires name: str")
+            if not isinstance(name, str):
+                raise ValueError("map.rename name must be a string")
+            rename = encode_bytes_field(
+                1, _mission_id_message(mission_id)
+            ) + encode_bytes_field(2, name.encode())
+            payload = encode_bytes_field(3, rename)
+        return EncodedCommand(payload, "floor_command")
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedPersistenceCodec:
+    """Exact encoders for the four native map-persistence variants."""
+
+    action: MapEnvironmentAction
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        persistence = _require_map_action(command, self.action)
+        if _map_command_has_extra_fields(persistence):
+            raise ValueError(
+                f"{persistence.command_key} does not accept map-edit arguments"
+            )
+        if self.action is MapEnvironmentAction.CLEAR_MAP:
+            mission_id = _u32(
+                persistence.mission_id,
+                field_name="map.clear_map mission_id",
+            )
+            payload = encode_bytes_field(
+                4,
+                _mission_id_message(mission_id),
+            )
+        else:
+            if persistence.mission_id is not None:
+                raise ValueError(
+                    f"{persistence.command_key} does not accept mission_id"
+                )
+            payload = {
+                MapEnvironmentAction.PERSISTENCE_CLEAR: bytes.fromhex("1200"),
+                MapEnvironmentAction.RESTORE_MAP: bytes.fromhex("080432021200"),
+                MapEnvironmentAction.UPLOAD_MAP_FOR_DEBUG: bytes.fromhex(
+                    "08053a021a00"
+                ),
+            }[self.action]
+        return EncodedCommand(payload, "map_command")
+
+
 @dataclass(frozen=True, slots=True)
 class _VerifiedEmptyMapCodec:
     action: MapEnvironmentAction
@@ -1062,9 +1829,107 @@ class _VerifiedEmptyMapCodec:
             or command.action is not self.action
         ):
             raise TypeError(f"codec expects MapEnvironmentCommand({self.action.value})")
-        if command.mission_id is not None or command.change_set:
+        if command.mission_id is not None or _map_command_has_extra_fields(command):
             raise ValueError(f"{command.command_key} does not accept arguments")
         return EncodedCommand(b"", self.target)
+
+
+def _require_media_action(
+    command: ControlCommand,
+    action: MediaAction,
+) -> MediaCommand:
+    if not isinstance(command, MediaCommand) or command.action is not action:
+        raise TypeError(f"codec expects MediaCommand({action.value})")
+    return command
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedRecordingCodec:
+    """Exact encoder for recording enable and rolling-buffer flush."""
+
+    action: MediaAction
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        media = _require_media_action(command, self.action)
+        if self.action is MediaAction.RECORDING_ENABLE:
+            if not isinstance(media.enabled, bool):
+                raise ValueError("media.recording_enable requires enabled: bool")
+            if media.recording_id is not None or media.confirm_for_each is not None:
+                raise ValueError("media.recording_enable accepts only enabled")
+            # The app uses the newer field-4 message, not the deprecated
+            # top-level bool field exposed by the proto.
+            payload = (
+                bytes.fromhex("22020801") if media.enabled else bytes.fromhex("2200")
+            )
+        else:
+            if any(
+                value is not None
+                for value in (
+                    media.recording_id,
+                    media.enabled,
+                    media.confirm_for_each,
+                )
+            ):
+                raise ValueError("media.flush_rolling_buffer does not accept arguments")
+            payload = bytes.fromhex("1a00")
+        return EncodedCommand(payload, "recording_command")
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedRollingRecordingCodec:
+    """Exact three-way encoder for enabled/confirmation/disabled."""
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        media = _require_media_action(
+            command,
+            MediaAction.ROLLING_BUFFER_CONFIG,
+        )
+        if media.recording_id is not None:
+            raise ValueError("media.rolling_buffer_config does not accept recording_id")
+        if not isinstance(media.enabled, bool):
+            raise ValueError("media.rolling_buffer_config requires enabled: bool")
+        if media.enabled:
+            if not isinstance(media.confirm_for_each, bool):
+                raise ValueError(
+                    "enabled media.rolling_buffer_config requires "
+                    "confirm_for_each: bool"
+                )
+            payload = (
+                bytes.fromhex("1200")
+                if media.confirm_for_each
+                else bytes.fromhex("0a00")
+            )
+        else:
+            if media.confirm_for_each is not None:
+                raise ValueError(
+                    "disabled media.rolling_buffer_config does not accept "
+                    "confirm_for_each"
+                )
+            payload = bytes.fromhex("1a00")
+        return EncodedCommand(payload, "toggle_rolling_recordings")
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedConfirmRecordingCodec:
+    """Exact recording-id plus save/delete action encoder."""
+
+    action: MediaAction
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        media = _require_media_action(command, self.action)
+        if media.enabled is not None or media.confirm_for_each is not None:
+            raise ValueError(f"{media.command_key} accepts only recording_id")
+        recording_id = media.recording_id
+        if (
+            isinstance(recording_id, bool)
+            or not isinstance(recording_id, int)
+            or not 0 <= recording_id <= 0xFFFFFFFFFFFFFFFF
+        ):
+            raise ValueError(f"{media.command_key} requires recording_id: u64")
+        action = 0 if self.action is MediaAction.CONFIRM_SAVE else 1
+        recording = encode_varint_field(1, recording_id) if recording_id != 0 else b""
+        payload = encode_varint_field(1, action) + encode_bytes_field(2, recording)
+        return EncodedCommand(payload, "recording_upload_confirmation")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1128,6 +1993,405 @@ class _VerifiedConfigureShippingCodec:
         )
 
 
+def _require_schedule_action(
+    command: ControlCommand,
+    action: ScheduleAction,
+) -> ScheduleCommand:
+    if not isinstance(command, ScheduleCommand) or command.action is not action:
+        raise TypeError(f"codec expects ScheduleCommand({action.value})")
+    return command
+
+
+def _schedule_command_has_extra_fields(
+    command: ScheduleCommand,
+    *,
+    allow_key: bool = False,
+    allow_event: bool = False,
+    allow_sink_event: bool = False,
+) -> bool:
+    return bool(
+        command.definition
+        or (command.key is not None and not allow_key)
+        or (command.event is not None and not allow_event)
+        or (command.sink_event is not None and not allow_sink_event)
+    )
+
+
+def _schedule_key(key: object) -> bytes:
+    if not isinstance(key, ScheduleEventKey):
+        raise ValueError("schedule command requires a ScheduleEventKey")
+    mission_id = _u32(key.mission_id, field_name="schedule key mission_id")
+    if not isinstance(key.event_id, UUID):
+        raise ValueError("schedule key event_id must be a UUID")
+    event_id = encode_bytes_field(1, _ffi_full_uuid(key.event_id))
+    return encode_bytes_field(
+        1,
+        _mission_id_message(mission_id),
+    ) + encode_bytes_field(3, event_id)
+
+
+def _sink_schedule_key(key: object) -> bytes:
+    if not isinstance(key, ScheduleEventKey):
+        raise ValueError("sink schedule command requires a ScheduleEventKey")
+    mission_id = _u32(key.mission_id, field_name="sink schedule key mission_id")
+    if not isinstance(key.event_id, UUID):
+        raise ValueError("sink schedule key event_id must be a UUID")
+    event_id = encode_bytes_field(1, _ffi_full_uuid(key.event_id))
+    return encode_bytes_field(1, event_id) + encode_bytes_field(
+        2,
+        _mission_id_message(mission_id),
+    )
+
+
+def _weekdays(values: object, *, field_name: str) -> bytes:
+    if not isinstance(values, tuple):
+        raise ValueError(f"{field_name} must be a tuple of Weekday values")
+    if any(not isinstance(value, Weekday) for value in values):
+        raise ValueError(f"{field_name} must contain exact Weekday values")
+    if len(set(values)) != len(values):
+        raise ValueError(f"{field_name} cannot contain duplicates")
+    fields = {
+        Weekday.MONDAY: 1,
+        Weekday.TUESDAY: 2,
+        Weekday.WEDNESDAY: 3,
+        Weekday.THURSDAY: 4,
+        Weekday.FRIDAY: 5,
+        Weekday.SATURDAY: 6,
+        Weekday.SUNDAY: 7,
+    }
+    return b"".join(
+        encode_varint_field(fields[weekday], 1)
+        for weekday in fields
+        if weekday in values
+    )
+
+
+def _signed_i64_varint(value: int, *, field_name: str) -> int:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not -(1 << 63) <= value < (1 << 63)
+    ):
+        raise ValueError(f"{field_name} must be a signed 64-bit integer")
+    return value & ((1 << 64) - 1)
+
+
+def _schedule_time(value: object, *, field_name: str) -> bytes:
+    if not isinstance(value, ScheduleTime):
+        raise ValueError(f"{field_name} must be a ScheduleTime")
+    seconds = _u32(
+        value.seconds_since_midnight,
+        field_name=f"{field_name}.seconds_since_midnight",
+    )
+    if not isinstance(value.timezone_id, str):
+        raise ValueError(f"{field_name}.timezone_id must be a string")
+    if (
+        isinstance(value.utc_offset_seconds, bool)
+        or not isinstance(value.utc_offset_seconds, int)
+        or not -(1 << 31) <= value.utc_offset_seconds < (1 << 31)
+    ):
+        raise ValueError(f"{field_name}.utc_offset_seconds must be an i32")
+    timezone = (
+        encode_bytes_field(2, value.timezone_id.encode()) if value.timezone_id else b""
+    )
+    if value.utc_offset_seconds != 0:
+        timezone += encode_varint_field(
+            3,
+            _signed_i64_varint(
+                value.utc_offset_seconds,
+                field_name=f"{field_name}.utc_offset_seconds",
+            ),
+        )
+    return (
+        encode_varint_field(1, seconds) if seconds != 0 else b""
+    ) + encode_bytes_field(4, timezone)
+
+
+def _schedule_timing(
+    weekdays: object,
+    time: object,
+    *,
+    field_name: str,
+) -> bytes:
+    return encode_bytes_field(
+        1,
+        _weekdays(weekdays, field_name=f"{field_name}.weekdays"),
+    ) + encode_bytes_field(
+        3,
+        _schedule_time(time, field_name=f"{field_name}.time"),
+    )
+
+
+def _schedule_goal_header(*, goal_id: UUID, spec: bytes) -> bytes:
+    round_key = encode_bytes_field(2, _generated_full_uuid(goal_id))
+    return encode_bytes_field(
+        6,
+        encode_bytes_field(1, round_key) + encode_bytes_field(3, spec),
+    )
+
+
+def _schedule_region_target(*, partition_id: UUID, region_id: UUID) -> bytes:
+    return b"".join(
+        (
+            encode_bytes_field(1, _ffi_partition_id(partition_id)),
+            encode_bytes_field(2, encode_bytes_field(1, b"")),
+            encode_bytes_field(
+                3,
+                encode_bytes_field(3, _ffi_region_id(region_id)),
+            ),
+        )
+    )
+
+
+def _schedule_custom_target(
+    *,
+    partition_id: UUID,
+    circles: tuple[DrawnCircle, ...],
+) -> bytes:
+    return b"".join(
+        (
+            encode_bytes_field(1, _ffi_partition_id(partition_id)),
+            encode_bytes_field(
+                2,
+                encode_bytes_field(
+                    3,
+                    _drawn_area(circles, field_name="schedule custom circles"),
+                ),
+            ),
+            encode_bytes_field(3, encode_bytes_field(2, b"")),
+        )
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedEditScheduleCodec:
+    """Exact regular cleaning-schedule command encoder."""
+
+    action: ScheduleAction
+    command_id_factory: Callable[[], UUID] = uuid4
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        schedule = _require_schedule_action(command, self.action)
+        if self.action is ScheduleAction.ADD_OR_MODIFY:
+            if _schedule_command_has_extra_fields(
+                schedule,
+                allow_key=True,
+                allow_event=True,
+            ):
+                raise ValueError("schedule.add_or_modify accepts key and ScheduleEvent")
+            key = _schedule_key(schedule.key)
+            event = self._event(schedule.event)
+            payload = encode_bytes_field(
+                2,
+                encode_bytes_field(1, key) + encode_bytes_field(2, event),
+            )
+        else:
+            if _schedule_command_has_extra_fields(schedule, allow_key=True):
+                raise ValueError(f"{schedule.command_key} accepts only key")
+            key = _schedule_key(schedule.key)
+            payload = encode_bytes_field(
+                3 if self.action is ScheduleAction.REMOVE else 4,
+                key,
+            )
+        return EncodedCommand(payload, "edit_schedule")
+
+    def _event(self, value: object) -> bytes:
+        if not isinstance(value, ScheduleEvent):
+            raise ValueError("schedule.add_or_modify requires ScheduleEvent")
+        if not isinstance(value.partition_id, UUID):
+            raise ValueError("ScheduleEvent.partition_id must be a UUID")
+        if not isinstance(value.cleaning_mode, CoverageCleaningMode):
+            raise ValueError("ScheduleEvent.cleaning_mode must be an exact enum")
+        if not isinstance(value.ordered, bool):
+            raise ValueError("ScheduleEvent.ordered must be a bool")
+        if value.name is not None and not isinstance(value.name, str):
+            raise ValueError("ScheduleEvent.name must be a string or None")
+        if not isinstance(value.enabled_state, ScheduleEnabledState):
+            raise ValueError("ScheduleEvent.enabled_state must be an exact enum")
+
+        specs: list[bytes] = []
+        if value.cleaning_mode in {
+            CoverageCleaningMode.VACUUM,
+            CoverageCleaningMode.BOTH,
+        }:
+            if not isinstance(value.vacuum_setting, ScheduleCoverageSetting):
+                raise ValueError("vacuum schedules require ScheduleCoverageSetting")
+            setting = {
+                ScheduleCoverageSetting.DEPRECATED_DEEP: 0,
+                ScheduleCoverageSetting.STANDARD: 1,
+                ScheduleCoverageSetting.QUICK: 2,
+            }[value.vacuum_setting]
+            for floor in (0, 1):
+                for behavior in range(4):
+                    specs.append(
+                        _encode_coverage_spec(
+                            setting=setting,
+                            floor=floor,
+                            cleaning_mode=0,
+                            behavior=behavior,
+                        )
+                    )
+        if value.cleaning_mode in {
+            CoverageCleaningMode.MOP,
+            CoverageCleaningMode.BOTH,
+        }:
+            for behavior in range(4):
+                specs.append(
+                    _encode_coverage_spec(
+                        setting=1,
+                        floor=0,
+                        cleaning_mode=1,
+                        behavior=behavior,
+                    )
+                )
+
+        targets: tuple[bytes, ...]
+        if isinstance(value.target, StandardScheduleTarget):
+            if (
+                not isinstance(value.target.region_ids, tuple)
+                or not value.target.region_ids
+                or any(
+                    not isinstance(region_id, UUID)
+                    for region_id in value.target.region_ids
+                )
+            ):
+                raise ValueError(
+                    "StandardScheduleTarget requires a non-empty UUID tuple"
+                )
+            targets = tuple(
+                _schedule_region_target(
+                    partition_id=value.partition_id,
+                    region_id=region_id,
+                )
+                for region_id in value.target.region_ids
+            )
+        elif isinstance(value.target, CustomScheduleTarget):
+            targets = (
+                _schedule_custom_target(
+                    partition_id=value.partition_id,
+                    circles=value.target.circles,
+                ),
+            )
+        else:
+            raise ValueError(
+                "ScheduleEvent.target must be StandardScheduleTarget or "
+                "CustomScheduleTarget"
+            )
+
+        goal_field = 1 if value.ordered else 2
+        goals = b"".join(
+            encode_bytes_field(
+                goal_field,
+                _schedule_goal_header(
+                    goal_id=self._next_id(),
+                    spec=spec,
+                )
+                + encode_bytes_field(7, target),
+            )
+            for target in targets
+            for spec in specs
+        )
+        enabled = {
+            ScheduleEnabledState.ENABLED: 1,
+            ScheduleEnabledState.DISABLED: 0,
+            ScheduleEnabledState.SUGGESTED: 2,
+        }[value.enabled_state]
+        event = encode_bytes_field(
+            1,
+            _schedule_timing(
+                value.weekdays,
+                value.time,
+                field_name="ScheduleEvent",
+            ),
+        )
+        if value.name is not None:
+            event += encode_bytes_field(2, value.name.encode())
+        event += encode_varint_field(3, enabled)
+        event += encode_bytes_field(7, goals)
+        event += encode_bytes_field(9, b"")
+        return event
+
+    def _next_id(self) -> UUID:
+        value = self.command_id_factory()
+        if not isinstance(value, UUID):
+            raise TypeError("schedule command_id_factory must return UUID")
+        return value
+
+
+def _schedule_duration(value: object) -> bytes:
+    if not isinstance(value, ScheduleDuration):
+        raise ValueError("sink schedule duration must be ScheduleDuration")
+    if (
+        isinstance(value.seconds, bool)
+        or not isinstance(value.seconds, int)
+        or not 0 <= value.seconds < (1 << 63)
+    ):
+        raise ValueError("schedule duration seconds must be a non-negative i64")
+    if (
+        isinstance(value.nanoseconds, bool)
+        or not isinstance(value.nanoseconds, int)
+        or not 0 <= value.nanoseconds < 1_000_000_000
+    ):
+        raise ValueError("schedule duration nanoseconds must be in [0, 1e9)")
+    return (encode_varint_field(1, value.seconds) if value.seconds != 0 else b"") + (
+        encode_varint_field(2, value.nanoseconds) if value.nanoseconds != 0 else b""
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedEditSinkScheduleCodec:
+    """Exact add/modify and remove sink-summon schedule encoder."""
+
+    action: ScheduleAction
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        schedule = _require_schedule_action(command, self.action)
+        if self.action is ScheduleAction.SINK_SUMMON_ADD_OR_MODIFY:
+            if _schedule_command_has_extra_fields(
+                schedule,
+                allow_key=True,
+                allow_sink_event=True,
+            ):
+                raise ValueError(
+                    "schedule.sink_summon_add_or_modify accepts key and "
+                    "SinkSummonScheduleEvent"
+                )
+            if not isinstance(schedule.sink_event, SinkSummonScheduleEvent):
+                raise ValueError(
+                    "schedule.sink_summon_add_or_modify requires "
+                    "SinkSummonScheduleEvent"
+                )
+            if not isinstance(schedule.sink_event.enabled, bool):
+                raise ValueError("sink schedule enabled must be a bool")
+            event = b"".join(
+                (
+                    encode_bytes_field(
+                        1,
+                        _schedule_timing(
+                            schedule.sink_event.weekdays,
+                            schedule.sink_event.time,
+                            field_name="SinkSummonScheduleEvent",
+                        ),
+                    ),
+                    encode_bytes_field(
+                        4,
+                        _schedule_duration(schedule.sink_event.duration),
+                    ),
+                    encode_varint_field(6, int(schedule.sink_event.enabled)),
+                )
+            )
+            entry = encode_bytes_field(
+                1,
+                _sink_schedule_key(schedule.key),
+            ) + encode_bytes_field(2, event)
+            payload = encode_bytes_field(1, entry)
+        else:
+            if _schedule_command_has_extra_fields(schedule, allow_key=True):
+                raise ValueError("schedule.sink_summon_remove accepts only key")
+            payload = encode_bytes_field(2, _sink_schedule_key(schedule.key))
+        return EncodedCommand(payload, "edit_sink_summon_schedule")
+
+
 @dataclass(frozen=True, slots=True)
 class _VerifiedGenerateSuggestedScheduleCodec:
     def encode(self, command: ControlCommand) -> EncodedCommand:
@@ -1136,7 +2400,7 @@ class _VerifiedGenerateSuggestedScheduleCodec:
             or command.action is not ScheduleAction.GENERATE_SUGGESTED
         ):
             raise TypeError("codec expects ScheduleCommand(generate_suggested)")
-        if command.key is not None or command.definition:
+        if _schedule_command_has_extra_fields(command):
             raise ValueError("schedule.generate_suggested does not accept arguments")
         return EncodedCommand(b"", "generate_suggested_schedule")
 
@@ -1164,8 +2428,8 @@ class _VerifiedLifecycleCodec:
         )
 
 
-# This inventory is intentionally explicit. It remains useful documentation
-# even though only a small, exact subset has callable codecs.
+# This inventory is intentionally explicit so evidence and live-test state stay
+# reviewable per command even though every current protocol-25 intent has a codec.
 COMMAND_SPECS: tuple[CommandSpec, ...] = (
     _spec(
         "user.stop",
@@ -1494,7 +2758,10 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "BuildPartitionCommand",
+        fields=("missionId: u32", "overwrite: bool", "generated operation UUID"),
         target="build_regions",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "map.edit_rooms",
@@ -1502,7 +2769,10 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "EditRoomsCommand",
+        fields=("missionId: u32", "partitionId: UUID", "typed room edit"),
         target="rename_area_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "map.edit_no_go_zone",
@@ -1510,7 +2780,10 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "NoGoZoneEdit",
+        fields=("missionId: u32", "Add(circles) | Remove(regionIds)"),
         target="nogo_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "map.edit_drive_only_zone",
@@ -1518,7 +2791,10 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "DriveOnlyZoneEdit",
+        fields=("missionId: u32", "Add(circles) | Remove(regionIds)"),
         target="nogo_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "map.edit_stairs",
@@ -1526,7 +2802,10 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "StairEdit",
+        fields=("missionId: u32", "Add(circles) | Remove(regionIds)"),
         target="stair_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "map.edit_semantics_override",
@@ -1534,7 +2813,10 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "SemanticsOverrideCommand",
+        fields=("missionId: u32", "circles", "semantics kind"),
         target="semantics_override",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "map.edit_sink_summon_location",
@@ -1542,7 +2824,10 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "EditSinkSummonLocationCommand",
+        fields=("missionId: u32", "location: Option<Posture>"),
         target="edit_sink_summon_location",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "map.canonicalize",
@@ -1550,7 +2835,10 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "FloorCommand.Canonicalize",
+        fields=("missionId: Option<u32>",),
         target="floor_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "map.rename",
@@ -1558,7 +2846,10 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "FloorCommand.Rename",
+        fields=("missionId: u32", "name: String"),
         target="floor_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "map.persistence_clear",
@@ -1567,6 +2858,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         MapEnvironmentCommand,
         "PersistenceCommand.Clear",
         target="map_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "map.clear_map",
@@ -1574,7 +2867,10 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.DESTRUCTIVE,
         MapEnvironmentCommand,
         "PersistenceCommand.ClearMap",
+        fields=("missionId: u32",),
         target="map_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "map.restore_map",
@@ -1583,6 +2879,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         MapEnvironmentCommand,
         "PersistenceCommand.RestoreMap",
         target="map_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "map.upload_map_for_debug",
@@ -1591,6 +2889,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         MapEnvironmentCommand,
         "PersistenceCommand.UploadMapForDebug",
         target="map_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "map.clear_rgb_weights",
@@ -1628,6 +2928,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "WifiUpdateCommand.Connect",
         fields=("ssid: String", "passphrase: Option<String>"),
         target="wifi_update_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "wifi.forget",
@@ -1637,6 +2939,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "WifiUpdateCommand.Forget",
         fields=("ssid: String",),
         target="wifi_update_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "device.rename",
@@ -1646,6 +2950,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "NewBotNameRequest",
         fields=("newName: String",),
         target="new_bot_name",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "device.discoverability",
@@ -1655,6 +2961,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "DiscoverableRequest",
         fields=("Enable(durationSeconds: u64) | Disable",),
         target="set_device_discoverable",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "device.new_mop_roll",
@@ -1664,6 +2972,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "NewMopRollCommand",
         fields=("enabled: bool",),
         target="new_mop_roll_override_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "device.clear_calibration",
@@ -1703,9 +3013,10 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         wire_verified=True,
         live_verified=True,
         evidence=(
-            "Official Android bool command binding and target; independent "
-            "golden payload fixture; idempotent SDK live write acknowledged and "
-            "state preserved 2026-07-22"
+            "Official Android scalar-bool serializer and exact target; native "
+            "offline golden vectors prove canonical false omission and true "
+            "payload; idempotent SDK live write acknowledged and state "
+            "preserved 2026-07-22"
         ),
     ),
     _spec(
@@ -1718,9 +3029,10 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         wire_verified=True,
         live_verified=True,
         evidence=(
-            "Official Android bool command binding and target; independent "
-            "golden payload fixture; idempotent SDK live write acknowledged and "
-            "state preserved 2026-07-22"
+            "Official Android scalar-bool serializer and exact target; native "
+            "offline golden vectors prove canonical false omission and true "
+            "payload; idempotent SDK live write acknowledged and state "
+            "preserved 2026-07-22"
         ),
     ),
     _spec(
@@ -1733,9 +3045,10 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         wire_verified=True,
         live_verified=True,
         evidence=(
-            "Official Android bool command binding and target; independent "
-            "golden payload fixture; idempotent SDK live write acknowledged and "
-            "state preserved 2026-07-22"
+            "Official Android scalar-bool serializer and exact target; native "
+            "offline golden vectors prove canonical false omission and true "
+            "payload; idempotent SDK live write acknowledged and state "
+            "preserved 2026-07-22"
         ),
     ),
     _spec(
@@ -1746,6 +3059,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "AutoRecordVoiceEnableCommand",
         fields=("enabled: bool",),
         target="auto_record_voice_enabled_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "settings.matter_pairing",
@@ -1755,6 +3070,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "MatterPairingEnableCommand",
         fields=("enabled: bool",),
         target="matter_pairing_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "settings.preview_release",
@@ -1764,6 +3081,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "UserRequestedPreviewEnableCommand",
         fields=("enabled: bool",),
         target="request_preview_release_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "settings.jukebox",
@@ -1773,6 +3092,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "JukeboxState",
         fields=("track: Option<OhHanukkah | DeckTheHalls | JingleBells>",),
         target="jukebox_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "schedule.add_or_modify",
@@ -1780,8 +3101,10 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         ScheduleCommand,
         "EditScheduleCommand.AddOrModify",
-        fields=("event: AddOrModifyScheduleEvent",),
+        fields=("key: ScheduleEventKey", "event: ScheduleEvent"),
         target="edit_schedule",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "schedule.remove",
@@ -1791,6 +3114,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "EditScheduleCommand.Remove",
         fields=("key: ScheduleEventKey(missionId: u32, eventId: UUID)",),
         target="edit_schedule",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "schedule.toggle",
@@ -1800,6 +3125,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "EditScheduleCommand.Toggle",
         fields=("key: ScheduleEventKey(missionId: u32, eventId: UUID)",),
         target="edit_schedule",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "schedule.generate_suggested",
@@ -1821,8 +3148,10 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         ScheduleCommand,
         "EditSinkSummonScheduleCommand.AddOrModify",
-        fields=("event: SinkSummonScheduleEvent",),
+        fields=("key: ScheduleEventKey", "event: SinkSummonScheduleEvent"),
         target="edit_sink_summon_schedule",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "schedule.sink_summon_remove",
@@ -1832,6 +3161,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "EditSinkSummonScheduleCommand.Remove",
         fields=("key: SinkSummonScheduleEventKey(missionId: u32, eventId: UUID)",),
         target="edit_sink_summon_schedule",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "media.recording_enable",
@@ -1841,6 +3172,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "RecordingCommand.Enabled",
         fields=("enabled: bool",),
         target="recording_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "media.rolling_buffer_config",
@@ -1850,6 +3183,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "RollingRecordingConfigKind",
         fields=("Enabled(confirmForEach: bool) | Disabled",),
         target="toggle_rolling_recordings",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "media.flush_rolling_buffer",
@@ -1859,6 +3194,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "RecordingCommand.FlushRollingBuffer",
         fields=("no arguments (nested RecordingCommand variant)",),
         target="recording_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "media.confirm_save",
@@ -1868,6 +3205,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "ConfirmRecordingCommand save",
         fields=("id: u64", "action: Save"),
         target="recording_upload_confirmation",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "media.confirm_delete",
@@ -1877,6 +3216,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "ConfirmRecordingCommand delete",
         fields=("id: u64", "action: Delete"),
         target="recording_upload_confirmation",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "telemetry.uploader_config",
@@ -1886,6 +3227,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "UploaderConfigCommand",
         fields=("optIn: bool",),
         target="uploader_config_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "telemetry.support_ssh_permission",
@@ -1895,6 +3238,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "UserTunnelSshPermissionCommand",
         fields=("enabled: bool",),
         target="user_tunnel_ssh_permission_command",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "telemetry.push_notification_subscription",
@@ -1904,6 +3249,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "PushNotificationSubscriptionCommand",
         fields=("deviceId: String", "appBundle: String"),
         target="subscribe_push_notifications",
+        wire_verified=True,
+        evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
         "lifecycle.update",
@@ -2094,11 +3441,45 @@ COMMAND_REGISTRY = CommandRegistry(
         "coverage.stain_mode": _VerifiedStainCoverageCodec(),
         "cleaning.manual": _VerifiedManualCleanCodec(),
         "raw_motors.setpoints": _VerifiedRawMotorCodec(),
+        "map.build_partition": _VerifiedBuildPartitionCodec(),
+        "map.edit_rooms": _VerifiedEditRoomsCodec(),
+        "map.edit_no_go_zone": _VerifiedZoneEditCodec(
+            MapEnvironmentAction.EDIT_NO_GO_ZONE,
+            "nogo_command",
+        ),
+        "map.edit_drive_only_zone": _VerifiedZoneEditCodec(
+            MapEnvironmentAction.EDIT_DRIVE_ONLY_ZONE,
+            "nogo_command",
+        ),
+        "map.edit_stairs": _VerifiedZoneEditCodec(
+            MapEnvironmentAction.EDIT_STAIRS,
+            "stair_command",
+        ),
+        "map.edit_semantics_override": _VerifiedSemanticsOverrideCodec(),
+        "map.edit_sink_summon_location": _VerifiedSinkSummonLocationCodec(),
+        "map.canonicalize": _VerifiedFloorCodec(MapEnvironmentAction.CANONICALIZE),
+        "map.rename": _VerifiedFloorCodec(MapEnvironmentAction.RENAME),
+        "map.persistence_clear": _VerifiedPersistenceCodec(
+            MapEnvironmentAction.PERSISTENCE_CLEAR
+        ),
+        "map.clear_map": _VerifiedPersistenceCodec(MapEnvironmentAction.CLEAR_MAP),
+        "map.restore_map": _VerifiedPersistenceCodec(MapEnvironmentAction.RESTORE_MAP),
+        "map.upload_map_for_debug": _VerifiedPersistenceCodec(
+            MapEnvironmentAction.UPLOAD_MAP_FOR_DEBUG
+        ),
         "map.clear_rgb_weights": _VerifiedEmptyMapCodec(
             MapEnvironmentAction.CLEAR_RGB_WEIGHTS,
             "clear_rgb_weights_command",
         ),
         "wifi.scan": _VerifiedWifiScanCodec(),
+        "wifi.connect": _VerifiedWifiUpdateCodec(WifiAction.CONNECT),
+        "wifi.forget": _VerifiedWifiUpdateCodec(WifiAction.FORGET),
+        "device.rename": _VerifiedDeviceRenameCodec(),
+        "device.discoverability": _VerifiedDiscoverabilityCodec(),
+        "device.new_mop_roll": _VerifiedDeviceBooleanCodec(
+            DeviceAction.NEW_MOP_ROLL,
+            "new_mop_roll_override_command",
+        ),
         "device.clear_calibration": _VerifiedDeviceEmptyCodec(
             DeviceAction.CLEAR_CALIBRATION,
             "clear_online_calib_command",
@@ -2108,7 +3489,46 @@ COMMAND_REGISTRY = CommandRegistry(
             f"settings.{action.value}": _VerifiedBinarySettingCodec(action, target)
             for action, target in _BINARY_SETTING_TARGETS.items()
         },
+        "settings.auto_record_voice": _VerifiedBinarySettingCodec(
+            SettingAction.AUTO_RECORD_VOICE,
+            "auto_record_voice_enabled_command",
+        ),
+        "settings.matter_pairing": _VerifiedBinarySettingCodec(
+            SettingAction.MATTER_PAIRING,
+            "matter_pairing_command",
+        ),
+        "settings.preview_release": _VerifiedBinarySettingCodec(
+            SettingAction.PREVIEW_RELEASE,
+            "request_preview_release_command",
+        ),
+        "settings.jukebox": _VerifiedJukeboxCodec(),
+        "schedule.add_or_modify": _VerifiedEditScheduleCodec(
+            ScheduleAction.ADD_OR_MODIFY
+        ),
+        "schedule.remove": _VerifiedEditScheduleCodec(ScheduleAction.REMOVE),
+        "schedule.toggle": _VerifiedEditScheduleCodec(ScheduleAction.TOGGLE),
         "schedule.generate_suggested": _VerifiedGenerateSuggestedScheduleCodec(),
+        "schedule.sink_summon_add_or_modify": _VerifiedEditSinkScheduleCodec(
+            ScheduleAction.SINK_SUMMON_ADD_OR_MODIFY
+        ),
+        "schedule.sink_summon_remove": _VerifiedEditSinkScheduleCodec(
+            ScheduleAction.SINK_SUMMON_REMOVE
+        ),
+        "media.recording_enable": _VerifiedRecordingCodec(MediaAction.RECORDING_ENABLE),
+        "media.rolling_buffer_config": _VerifiedRollingRecordingCodec(),
+        "media.flush_rolling_buffer": _VerifiedRecordingCodec(
+            MediaAction.FLUSH_ROLLING_BUFFER
+        ),
+        "media.confirm_save": _VerifiedConfirmRecordingCodec(MediaAction.CONFIRM_SAVE),
+        "media.confirm_delete": _VerifiedConfirmRecordingCodec(
+            MediaAction.CONFIRM_DELETE
+        ),
+        "telemetry.uploader_config": _VerifiedUploaderConfigCodec(),
+        "telemetry.support_ssh_permission": _VerifiedTelemetryBooleanCodec(
+            TelemetryAction.SUPPORT_SSH_PERMISSION,
+            "user_tunnel_ssh_permission_command",
+        ),
+        "telemetry.push_notification_subscription": (_VerifiedPushNotificationCodec()),
         "lifecycle.update": _VerifiedLifecycleCodec(
             LifecycleAction.UPDATE,
             bytes.fromhex("0a00"),

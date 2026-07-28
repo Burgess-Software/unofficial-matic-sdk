@@ -356,10 +356,114 @@ class MapEnvironmentAction(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class MapPoint:
+    """One point in the SDK's mission-relative map coordinate frame."""
+
+    x_meters: float
+    y_meters: float
+
+
+class RoomLabel(StrEnum):
+    """Built-in room labels exposed by the official client."""
+
+    BATHROOM = "bathroom"
+    BEDROOM = "bedroom"
+    DINING_ROOM = "dining_room"
+    LIVING_ROOM = "living_room"
+    KITCHEN = "kitchen"
+    HALLWAY = "hallway"
+
+
+@dataclass(frozen=True, slots=True)
+class RenameRoom:
+    """Rename or relabel one mapped room."""
+
+    region_id: UUID
+    label: RoomLabel | str
+
+
+@dataclass(frozen=True, slots=True)
+class MergeRooms:
+    """Merge two mapped rooms and assign the resulting label."""
+
+    first_region_id: UUID
+    second_region_id: UUID
+    label: RoomLabel | str
+
+
+@dataclass(frozen=True, slots=True)
+class SplitRoom:
+    """Split one mapped room along a mission-relative line."""
+
+    region_id: UUID
+    start: MapPoint
+    end: MapPoint
+
+
+@dataclass(frozen=True, slots=True)
+class AddZones:
+    """Add one or more circular map zones."""
+
+    circles: tuple[DrawnCircle, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RemoveZones:
+    """Remove zones by their native compact region identifiers.
+
+    The official binding exposes these as UUID-shaped values even though the
+    command reduces them to a constrained 32-bit region identifier. Supplying
+    an integer directly is the least surprising representation for SDK users.
+    """
+
+    region_ids: tuple[int | UUID, ...]
+
+
+class SemanticsOverrideKind(StrEnum):
+    """Surface/wire interpretation assigned to a drawn map area."""
+
+    UNSET = "unset"
+    HARDFLOOR_ALLOW_WIRE = "hardfloor_allow_wire"
+    CARPET_ALLOW_WIRE = "carpet_allow_wire"
+    HARDFLOOR_DISALLOW_WIRE = "hardfloor_disallow_wire"
+    CARPET_DISALLOW_WIRE = "carpet_disallow_wire"
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticsOverride:
+    """Apply one semantic interpretation to circular map areas."""
+
+    circles: tuple[DrawnCircle, ...]
+    kind: SemanticsOverrideKind
+
+
+@dataclass(frozen=True, slots=True)
+class SinkSummonLocation:
+    """Mission-relative pose where the robot should meet the sink."""
+
+    x_meters: float
+    y_meters: float
+    yaw_radians: float
+
+
+@dataclass(frozen=True, slots=True)
 class MapEnvironmentCommand(ControlCommand):
     action: MapEnvironmentAction
     mission_id: int | None = None
     change_set: Mapping[str, object] = field(default_factory=dict, repr=False)
+    partition_id: UUID | None = None
+    change: (
+        RenameRoom
+        | MergeRooms
+        | SplitRoom
+        | AddZones
+        | RemoveZones
+        | SemanticsOverride
+        | SinkSummonLocation
+        | None
+    ) = None
+    overwrite: bool | None = None
+    name: str | None = None
 
     command_prefix: ClassVar[str] = "map"
 
@@ -447,12 +551,94 @@ class ScheduleAction(StrEnum):
     SINK_SUMMON_REMOVE = "sink_summon_remove"
 
 
+class Weekday(StrEnum):
+    SUNDAY = "sunday"
+    MONDAY = "monday"
+    TUESDAY = "tuesday"
+    WEDNESDAY = "wednesday"
+    THURSDAY = "thursday"
+    FRIDAY = "friday"
+    SATURDAY = "saturday"
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduleTime:
+    """Local time-of-day plus the timezone snapshot used by the robot."""
+
+    seconds_since_midnight: int
+    timezone_id: str
+    utc_offset_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
+class StandardScheduleTarget:
+    """Mapped rooms selected by a regular cleaning schedule."""
+
+    region_ids: tuple[UUID, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CustomScheduleTarget:
+    """Circular custom area selected by a cleaning schedule."""
+
+    circles: tuple[DrawnCircle, ...]
+
+
+class ScheduleCoverageSetting(StrEnum):
+    """Vacuum pass density supported by stored schedules."""
+
+    QUICK = "quick"
+    STANDARD = "standard"
+    DEPRECATED_DEEP = "deprecated_deep"
+
+
+class ScheduleEnabledState(StrEnum):
+    """Explicit state carried by a regular schedule event."""
+
+    ENABLED = "enabled"
+    DISABLED = "disabled"
+    SUGGESTED = "suggested"
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduleEvent:
+    """Complete regular cleaning schedule definition."""
+
+    weekdays: tuple[Weekday, ...]
+    time: ScheduleTime
+    target: StandardScheduleTarget | CustomScheduleTarget
+    partition_id: UUID
+    cleaning_mode: CoverageCleaningMode
+    name: str | None = None
+    ordered: bool = False
+    vacuum_setting: ScheduleCoverageSetting | None = ScheduleCoverageSetting.STANDARD
+    enabled_state: ScheduleEnabledState = ScheduleEnabledState.ENABLED
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduleDuration:
+    """Exact protobuf duration used by sink-summon schedules."""
+
+    seconds: int
+    nanoseconds: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class SinkSummonScheduleEvent:
+    """Complete sink-summon schedule definition."""
+
+    weekdays: tuple[Weekday, ...]
+    time: ScheduleTime
+    duration: ScheduleDuration
+    enabled: bool = True
+
+
 @dataclass(frozen=True, slots=True)
 class ScheduleEventKey:
     """Native schedule key: a mission u32 plus an event UUID."""
 
     mission_id: int
-    event_id: str
+    event_id: UUID
 
 
 @dataclass(frozen=True, slots=True)
@@ -460,6 +646,8 @@ class ScheduleCommand(ControlCommand):
     action: ScheduleAction
     key: ScheduleEventKey | None = None
     definition: Mapping[str, object] = field(default_factory=dict, repr=False)
+    event: ScheduleEvent | None = None
+    sink_event: SinkSummonScheduleEvent | None = None
 
     command_prefix: ClassVar[str] = "schedule"
 
@@ -584,6 +772,7 @@ class CommandReceipt:
 
 
 __all__ = [
+    "AddZones",
     "CleaningAction",
     "CleaningCommand",
     "CleaningFloor",
@@ -602,6 +791,7 @@ __all__ = [
     "CoverageGoals",
     "CoveragePlanGoal",
     "CoverageSetting",
+    "CustomScheduleTarget",
     "DeviceAction",
     "DeviceCommand",
     "DrawnCircle",
@@ -612,28 +802,45 @@ __all__ = [
     "LifecycleCommand",
     "MapEnvironmentAction",
     "MapEnvironmentCommand",
+    "MapPoint",
     "MediaAction",
     "MediaCommand",
+    "MergeRooms",
     "MissionPosture",
     "NavigationCommand",
     "NavigationMode",
     "ObservedEffect",
     "ObservedEffectStatus",
     "RawMotorCommand",
+    "RemoveZones",
+    "RenameRoom",
     "ReprioritizeAction",
     "ReprioritizeCoverageCommand",
+    "RoomLabel",
     "ScheduleAction",
     "ScheduleCommand",
+    "ScheduleCoverageSetting",
+    "ScheduleDuration",
+    "ScheduleEnabledState",
+    "ScheduleEvent",
     "ScheduleEventKey",
+    "ScheduleTime",
+    "SemanticsOverride",
+    "SemanticsOverrideKind",
     "SettingAction",
     "SettingsCommand",
+    "SinkSummonLocation",
+    "SinkSummonScheduleEvent",
+    "SplitRoom",
     "StainMode",
+    "StandardScheduleTarget",
     "TelemetryAction",
     "TelemetryCommand",
     "TransportAckStatus",
     "TransportAcknowledgement",
     "UserAction",
     "UserCommand",
+    "Weekday",
     "WifiAction",
     "WifiCommand",
 ]

@@ -70,7 +70,6 @@ from matic_sdk.protocol.commands import (
     CodecEvidenceLevel,
     CommandRegistry,
     EncodedCommand,
-    UnsupportedCommandCodec,
     UnsupportedProtocolVersion,
     _VerifiedNormalCoverageCodec,
     _VerifiedRawMotorCodec,
@@ -184,44 +183,13 @@ def test_registry_documents_every_recovered_command_family() -> None:
 
 def test_default_registry_exposes_only_verified_codecs() -> None:
     available = {spec.key for spec in COMMAND_SPECS if spec.codec_available}
-    assert available == {
-        "cleaning.manual",
-        "coverage.normal",
-        "coverage.reprioritize",
-        "coverage.stain_mode",
-        "device.clear_calibration",
-        "device.configure_shipping",
-        "lifecycle.reboot",
-        "lifecycle.shutdown",
-        "lifecycle.update",
-        "map.clear_rgb_weights",
-        "navigation.navigate",
-        "navigation.navigate_and_explore",
-        "navigation.navigate_and_wait",
-        "raw_motors.setpoints",
-        "schedule.generate_suggested",
-        "settings.child_lock",
-        "settings.pet_waste_avoidance",
-        "settings.voice",
-        "user.dock",
-        "user.explore",
-        "user.joystick",
-        "user.pause",
-        "user.re_explore",
-        "user.redo_coverage",
-        "user.resume",
-        "user.resume_coverage",
-        "user.stop",
-        "user.stay_put",
-        "user.trace_calibration",
-        "wifi.scan",
-    }
+    assert available == set(COMMAND_REGISTRY.specs)
     wire_verified = {
         spec.key
         for spec in COMMAND_SPECS
         if spec.evidence_level is CodecEvidenceLevel.WIRE_VERIFIED
     }
-    assert len(wire_verified) == 30
+    assert len(wire_verified) == 65
     assert wire_verified == available
     live_verified = {spec.key for spec in COMMAND_SPECS if spec.live_delivery_verified}
     assert live_verified == {
@@ -347,7 +315,7 @@ def test_empty_command_message_uses_canonical_channel_envelope() -> None:
             SettingAction.PET_WASTE_AVOIDANCE,
             False,
             "petwaste_enabled_command",
-            "0800",
+            "",
         ),
         (SettingAction.VOICE, True, "voice_enabled_command", "0801"),
     ],
@@ -363,9 +331,9 @@ def test_binary_setting_codecs_match_golden_wire_vectors(
         protocol_version=25,
     )
     assert encoded == EncodedCommand(bytes.fromhex(payload_hex), target)
-    expected_envelope = encode_bytes_field(1, target.encode()) + encode_bytes_field(
-        2, bytes.fromhex(payload_hex)
-    )
+    expected_envelope = encode_bytes_field(1, target.encode())
+    if payload_hex:
+        expected_envelope += encode_bytes_field(2, bytes.fromhex(payload_hex))
     assert _encode_channel_request(encoded) == expected_envelope
 
 
@@ -1769,7 +1737,7 @@ async def test_jsonl_audit_is_mode_0600_and_contains_no_command_secrets(
     transport = NeverCalledTransport()
     executor = CommandExecutor(
         transport,
-        protocol_version=25,
+        protocol_version=24,
         tls_identity_verified=True,
         audit_log=audit,
     )
@@ -1778,7 +1746,7 @@ async def test_jsonl_audit_is_mode_0600_and_contains_no_command_secrets(
         ssid="household-network",
         passphrase="network-password",
     )
-    with pytest.raises(UnsupportedCommandCodec):
+    with pytest.raises(UnsupportedProtocolVersion):
         await executor.execute(command)
 
     assert stat.S_IMODE(audit_path.stat().st_mode) == 0o600
@@ -1790,4 +1758,4 @@ async def test_jsonl_audit_is_mode_0600_and_contains_no_command_secrets(
     records = [json.loads(line) for line in contents.splitlines()]
     assert records[0]["nested"]["safe"] == "kept"
     assert records[0]["nested"]["ssid"] == "[REDACTED]"
-    assert records[-1]["error_type"] == "UnsupportedCommandCodec"
+    assert records[-1]["error_type"] == "UnsupportedProtocolVersion"

@@ -41,7 +41,7 @@ collection_app = typer.Typer(help="List, stream, and record Hermes collections."
 map_app = typer.Typer(help="Decode captured map collection events.")
 voxel_app = typer.Typer(help="Export captured sparse colored voxels.")
 media_app = typer.Typer(help="Extract retained WebP media from captures.")
-control_app = typer.Typer(help="Inspect the fail-closed command surface.")
+control_app = typer.Typer(help="Inspect command codecs and verification evidence.")
 app.add_typer(tls_app, name="tls")
 app.add_typer(credential_app, name="credentials")
 app.add_typer(collection_app, name="collections")
