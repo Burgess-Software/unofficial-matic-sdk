@@ -53,8 +53,10 @@ secrets/
 *.jpg
 *.jpeg
 captures/
+*-capture/
 snapshots/
 decoded-maps/
 exported-voxels/
 extracted-media/
 research-private/
+*.jsonl

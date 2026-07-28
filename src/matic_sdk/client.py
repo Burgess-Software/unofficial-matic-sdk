@@ -31,6 +31,7 @@ from matic_sdk.safety import (
 from matic_sdk.telemetry import DEFAULT_CONTROL_FEEDBACK_TARGETS, TelemetrySession
 from matic_sdk.transport.commands import _HermesCommandTransport
 from matic_sdk.transport.h2 import H2Transport
+from matic_sdk.transport.tls import TlsConnectionInfo
 
 if TYPE_CHECKING:
     from matic_sdk.coverage import ReprioritizationSnapshot
@@ -49,7 +50,7 @@ class MaticClient:
         credentials: CredentialStore | None,
     ) -> None:
         self.config = config
-        self.transport = transport
+        self._transport = transport
         self.credentials = credentials
         self.collections = CollectionManager(self.subscribe)
         self.commands = CommandExecutor(
@@ -60,6 +61,18 @@ class MaticClient:
         self._subscriptions: set[CollectionSubscription] = set()
         self._teleop_sessions: weakref.WeakSet[TeleopSession] = weakref.WeakSet()
         self._closed = False
+
+    @property
+    def connected(self) -> bool:
+        """Whether the authenticated local transport is currently connected."""
+
+        return self._transport.connected
+
+    @property
+    def connection_info(self) -> TlsConnectionInfo | None:
+        """Read-only TLS details for the authenticated local connection."""
+
+        return self._transport.tls_info
 
     @classmethod
     async def connect(
@@ -118,11 +131,11 @@ class MaticClient:
         )
 
     async def handshake(self) -> None:
-        response = await self.transport.unary(HANDSHAKE_PATH)
+        response = await self._transport.unary(HANDSHAKE_PATH)
         response.raise_for_status()
 
     async def bot_info(self) -> BotInformation:
-        return await get_bot_info(self.transport)
+        return await get_bot_info(self._transport)
 
     async def subscribe(
         self,
@@ -139,7 +152,7 @@ class MaticClient:
             self._subscriptions.discard(subscription)
 
         subscription = await CollectionSubscription.open(
-            self.transport,
+            self._transport,
             target,
             fresh=fresh,
             config=subscription_config,
@@ -222,7 +235,7 @@ class MaticClient:
             except BaseException as error:
                 errors.append(error)
         try:
-            await self.transport.close()
+            await self._transport.close()
         except BaseException as error:
             errors.append(error)
         self._teleop_sessions.clear()

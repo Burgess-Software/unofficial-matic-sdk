@@ -9,6 +9,13 @@ The diagnostic insecure read mode cannot construct a command transport.
 It also cannot carry authentication metadata; it is limited to unauthenticated
 discovery.
 
+These checks are cooperative API guardrails, not a sandbox for untrusted Python
+code. `MaticClient` keeps its authenticated transport private, and the
+documented top-level API has no arbitrary-payload method. Code running in the
+same process can still import private implementation modules, read credentials
+available to that process, or implement the protocol itself. Do not give
+untrusted plugins access to the SDK process or BotToken.
+
 ## Risk classes
 
 - **Stationary:** Stop, StayPut and Pause.
@@ -37,12 +44,16 @@ Raw-motor encoding has no registered codec because hardware-safe ranges are not
 proven. The watchdog-backed joystick path has bounded live-delivery evidence
 including a docked-to-ready state transition. Plain navigation also has a
 bounded position-and-heading observation; the wait and explore variants do
-not. No raw-actuation, destructive, network-changing, update, reboot, or
-shutdown command has been live-tested by this SDK.
+not. Dock has a bounded ready-to-charging observation. Normal coverage has one
+bounded one-room observation; reprioritization and stain mode remain
+offline-only. No raw-actuation, destructive, network-changing, update, reboot,
+or shutdown command has been live-tested by this SDK.
 
 Commands with an unknown outcome are not retried automatically. Audit records
-contain the local request ID, command kind, timestamps, protocol version,
-acknowledgement, and observed effect, but never authorization material.
+created by an explicitly supplied `JsonlAuditLog` contain the local request ID,
+command kind, timestamps, protocol version, acknowledgement, and observed
+effect, but never authorization material. `MaticClient` currently uses the
+no-op audit sink and does not write a log automatically.
 
 ## Teleoperation
 

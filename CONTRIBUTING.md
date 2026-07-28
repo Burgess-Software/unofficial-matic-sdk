@@ -1,7 +1,7 @@
 # Contributing
 
-The project is currently private and has no license grant. Contribution access
-does not grant permission to redistribute the source.
+The project has no license grant. Contribution access does not grant permission
+to redistribute the source.
 
 - Keep protocol claims labeled as live, offline, static, or experimental.
 - Add synthetic tests for every reconstructed field or command codec.

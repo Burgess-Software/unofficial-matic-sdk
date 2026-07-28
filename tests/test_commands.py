@@ -26,6 +26,7 @@ from matic_sdk.models.control import (
     CleaningFloor,
     CleaningIntensity,
     CommandFamily,
+    CommandRisk,
     CoverageAction,
     CoverageBehavior,
     CoverageCleaningMode,
@@ -191,6 +192,21 @@ def test_registry_documents_every_recovered_command_family() -> None:
     assert expected_keys <= COMMAND_REGISTRY.specs.keys()
 
 
+def test_hazardous_registry_specs_always_require_unsafe_controls() -> None:
+    hazardous = {
+        CommandRisk.PERSISTENT,
+        CommandRisk.SENSITIVE,
+        CommandRisk.RAW_ACTUATION,
+        CommandRisk.DESTRUCTIVE,
+    }
+
+    assert all(
+        spec.requires_unsafe_controls
+        for spec in COMMAND_SPECS
+        if spec.risk in hazardous
+    )
+
+
 def test_default_registry_exposes_only_verified_codecs() -> None:
     available = {spec.key for spec in COMMAND_SPECS if spec.codec_available}
     assert available == {
@@ -233,10 +249,12 @@ def test_default_registry_exposes_only_verified_codecs() -> None:
     assert wire_verified - available == {"raw_motors.setpoints"}
     live_verified = {spec.key for spec in COMMAND_SPECS if spec.live_delivery_verified}
     assert live_verified == {
+        "coverage.normal",
         "navigation.navigate",
         "settings.child_lock",
         "settings.pet_waste_avoidance",
         "settings.voice",
+        "user.dock",
         "user.joystick",
         "user.pause",
         "user.stay_put",

@@ -444,7 +444,6 @@ def test_decode_coverage_plan_rejects_mixed_or_custom_targets(goal: bytes) -> No
     ("mission_id", "candidate_region_id", "message"),
     [
         (None, REGION_A, "mission_id is required"),
-        (MISSION_ID, None, "candidate_key is required"),
     ],
 )
 def test_decode_coverage_plan_rejects_missing_plan_identity(
@@ -460,6 +459,15 @@ def test_decode_coverage_plan_rejects_missing_plan_identity(
 
     with pytest.raises(CoverageDecodeError, match=message):
         decode_coverage_plan(payload)
+
+
+def test_decode_coverage_plan_waits_for_candidate_region() -> None:
+    payload = _coverage_plan_from_goal_messages(
+        (_goal(GOAL_A, REGION_A),),
+        candidate_region_id=None,
+    )
+
+    assert decode_coverage_plan(payload) is None
 
 
 @pytest.mark.parametrize(
@@ -543,6 +551,28 @@ async def test_snapshot_assembler_replaces_deleted_plan(
 
     assert snapshot is not None
     assert snapshot.mission_id == MISSION_ID
+
+
+@pytest.mark.asyncio
+async def test_snapshot_assembler_waits_for_candidate_region(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selecting_plan = _coverage_plan_from_goal_messages(
+        (_goal(GOAL_A, REGION_A),),
+        candidate_region_id=None,
+    )
+    events = (
+        _event("active_session_key", _active_session_payload()),
+        _event("coverage_plan", selecting_plan),
+        _event("coverage_plan", _positive_plan_payload()),
+    )
+    _install_fake_telemetry(monkeypatch, events)
+
+    snapshot = await fetch_reprioritization_snapshot(_client())
+
+    assert snapshot is not None
+    assert snapshot.mission_id == MISSION_ID
+    assert snapshot.current_region_id == REGION_A
 
 
 @pytest.mark.parametrize(

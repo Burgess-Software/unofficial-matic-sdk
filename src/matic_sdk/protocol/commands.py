@@ -195,6 +195,14 @@ def _spec(
     live_verified: bool = False,
     evidence: str | None = None,
 ) -> CommandSpec:
+    unsafe_risks = {
+        CommandRisk.PERSISTENT,
+        CommandRisk.SENSITIVE,
+        CommandRisk.RAW_ACTUATION,
+        CommandRisk.DESTRUCTIVE,
+    }
+    if risk in unsafe_risks and not unsafe:
+        raise ValueError(f"{risk.value} commands require unsafe controls")
     if live_verified and (not wire_verified or not codec_enabled):
         raise ValueError("live command verification requires an enabled wire codec")
     return CommandSpec(
@@ -1245,9 +1253,11 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "UserCommand.Dock",
         payload=bytes.fromhex("12042a020800"),
         wire_verified=True,
+        live_verified=True,
         evidence=(
             "Official Android offline encoder fixture and native target; "
-            "motion-capable and not live-tested"
+            "a bounded SDK command transitioned ready to returning to "
+            "charging with no robot errors on 2026-07-28"
         ),
     ),
     _spec(
@@ -1414,10 +1424,12 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         ),
         target=USER_COMMAND_HERMES_TARGET,
         wire_verified=True,
+        live_verified=True,
         evidence=(
             "Matic Android 1.151.0 native CoverageCommand and Goal encoder "
             "paths plus an official Matic Android 1.167.0 offline synthetic "
-            "golden vector; motion-capable and not live-tested"
+            "golden vector; a bounded one-room run was acknowledged and its "
+            "active plan/session decoded before Stop and Dock on 2026-07-28"
         ),
     ),
     _spec(

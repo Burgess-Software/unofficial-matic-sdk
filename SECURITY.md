@@ -2,9 +2,13 @@
 
 ## Reporting
 
-Report security issues privately to the repository owner. Do not open a public
-issue containing a BotToken, robot identifier, household map, recording,
-network address, certificate pin, or packet capture.
+Use GitHub's private
+[Report a vulnerability](https://github.com/Burgess-Software/unofficial-matic-sdk/security/advisories/new)
+flow. Do not open a public issue containing a BotToken, robot identifier,
+household map, recording, network address, certificate pin, or packet capture.
+
+Private vulnerability reporting must be enabled in the repository Security
+settings before the repository is made public.
 
 ## Secret handling
 

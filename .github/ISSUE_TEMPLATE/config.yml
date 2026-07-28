@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Burgess-Software/unofficial-matic-sdk/security/advisories/new
+    about: Report tokens, robot identifiers, household data, or security issues privately.

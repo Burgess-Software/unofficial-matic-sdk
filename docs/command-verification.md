@@ -1,7 +1,7 @@
 # Command verification ledger
 
 This is the protocol-25 command boundary implemented by the SDK: 65 documented
-intents, 30 exact `wire_verified` formats, 29 registered codecs, and 8 command
+intents, 30 exact `wire_verified` formats, 29 registered codecs, and 10 command
 intents with live delivery evidence. `Wire / yes` means the protobuf body,
 Hermes target, and surrounding channel envelope are exact and the codec is
 registered. `Wire / no` records an exact format disabled by safety policy.
@@ -21,7 +21,7 @@ unless the row explicitly says yes.
 | `user.stay_put` | `user_command` | Wire / yes | Yes | None / stationary | Acknowledged while docked; no transition claimed |
 | `user.pause` | `user_command` | Wire / yes | Yes | None / stationary | Acknowledged while docked; no transition claimed |
 | `user.resume` | `user_command` | Wire / yes | No | `MotionControls` / motion | No motion-changing live test |
-| `user.dock` | `user_command` | Wire / yes | No | `MotionControls` / motion | No motion-changing live test |
+| `user.dock` | `user_command` | Wire / yes | Yes | `MotionControls` / motion | On 2026-07-28 an acknowledged command transitioned ready → returning → charging in about eight seconds with no robot errors |
 | `user.explore` | `user_command` | Wire / yes | No | `MotionControls` / motion | No motion-changing live test |
 | `user.re_explore` | `user_command` | Wire / yes | No | `MotionControls` / motion | No motion-changing live test |
 | `user.redo_coverage` | `user_command` | Wire / yes | No | `MotionControls` / motion | No motion-changing live test |
@@ -31,7 +31,7 @@ unless the row explicitly says yes.
 | `navigation.navigate` | `user_command` | Wire / yes | Yes | `MotionControls` / motion | On 2026-07-28 a corrected canonical-frame command reached the requested pose within 0.012 m and 0.078 rad; Stop was acknowledged and no robot errors appeared |
 | `navigation.navigate_and_wait` | `user_command` | Wire / yes | No | `MotionControls` / motion | Exact fixed 900-second wait envelope; no live test |
 | `navigation.navigate_and_explore` | `user_command` | Wire / yes | No | `MotionControls` / motion | Exact NavigateTo plus Explore task envelope; no live test |
-| `coverage.normal` | `user_command` | Wire / yes | No | `MotionControls` / motion | Native encoder proof plus official Android 1.167 synthetic golden vector; no live test |
+| `coverage.normal` | `user_command` | Wire / yes | Yes | `MotionControls` / motion | On 2026-07-28 a bounded one-room Quick Vacuum run was acknowledged; its active mission, session, goals, and current region decoded successfully before Stop and Dock |
 | `coverage.reprioritize` | `user_command` | Wire / yes | No | `MotionControls` / motion | Exact Prioritize and Skip plan transforms; requires the current goal plan and session ID; Add/Redo not exposed |
 | `coverage.stain_mode` | `user_command` | Wire / yes | No | `MotionControls` / motion | Exact dry-stain and wet-spill drawn-circle plans; no live test |
 | `cleaning.manual` | `user_command` | Wire / yes | No | `MotionControls` / motion | No motion-changing live test |

@@ -20,6 +20,11 @@ FORBIDDEN_SUFFIXES = {
     ".crt",
     ".db",
     ".der",
+    ".flac",
+    ".gif",
+    ".gz",
+    ".heic",
+    ".heif",
     ".hprof",
     ".jpeg",
     ".jpg",
@@ -29,6 +34,9 @@ FORBIDDEN_SUFFIXES = {
     ".mkv",
     ".mov",
     ".mp4",
+    ".mp3",
+    ".ogg",
+    ".opus",
     ".p12",
     ".pb",
     ".pcap",
@@ -40,15 +48,23 @@ FORBIDDEN_SUFFIXES = {
     ".so",
     ".sqlite",
     ".sqlite3",
+    ".tar",
+    ".tgz",
+    ".tif",
+    ".tiff",
     ".wav",
     ".webp",
+    ".zip",
 }
 FORBIDDEN_NAMES = {
     "credentials.md",
     "matic-laptop-client-id.txt",
 }
 TEXT_PATTERNS = {
-    "local research path": re.compile(r"/home/[^/\s]+/matic(?:/|\b)"),
+    "local absolute path": re.compile(
+        r"(?:/home|/Users)/[A-Za-z0-9._-]+/[^\s`'\"<>)]*"
+        r"|[A-Za-z]:\\Users\\[A-Za-z0-9._-]+\\[^\s`'\"<>)]*"
+    ),
     "private LAN address": re.compile(
         r"\b(?:10\.\d{1,3}|192\.168|172\.(?:1[6-9]|2\d|3[01]))"
         r"(?:\.\d{1,3}){2}\b"
@@ -56,6 +72,7 @@ TEXT_PATTERNS = {
     "concrete robot hostname": re.compile(
         r"\bmatic-[a-z0-9]{4}-[a-z0-9]{4}(?:\.local)?\b", re.I
     ),
+    "MAC address": re.compile(r"\b(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\b", re.I),
     "authorization value": re.compile(r"Bearer:\s+[A-Za-z0-9+/]{20,}={0,2}"),
     "JWT": re.compile(r"eyJ[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{8,}"),
 }
@@ -91,10 +108,8 @@ def scan_data(relative: str, data: bytes, *, location: str | None = None) -> lis
     issues: list[str] = []
     if relative_path.suffix.lower() in FORBIDDEN_SUFFIXES:
         issues.append(f"forbidden artifact suffix: {display}")
-    if (
-        relative_path.name.lower() in FORBIDDEN_NAMES
-        or "bottoken" in relative_path.name.lower()
-    ):
+    normalized_name = re.sub(r"[-_.]", "", relative_path.name.lower())
+    if relative_path.name.lower() in FORBIDDEN_NAMES or "bottoken" in normalized_name:
         issues.append(f"forbidden credential filename: {display}")
     if len(data) > MAX_FILE_BYTES:
         issues.append(f"file exceeds {MAX_FILE_BYTES} bytes: {display}")

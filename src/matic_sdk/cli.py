@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import struct
-from collections.abc import Awaitable, Iterable
+from collections.abc import Coroutine, Iterable
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Annotated, Any, TypeVar
 
@@ -52,8 +52,8 @@ app.add_typer(control_app, name="control")
 T = TypeVar("T")
 
 
-def _run(awaitable: Awaitable[T]) -> T:
-    return asyncio.run(awaitable)
+def _run(coroutine: Coroutine[Any, Any, T]) -> T:
+    return asyncio.run(coroutine)
 
 
 def _terminal_safe(value: object) -> str:
@@ -173,9 +173,7 @@ def _event_summary(event: Any) -> dict[str, object]:
         "operation": event.operation.value,
         "received_at": event.received_at.isoformat(),
         "sequence_no": event.sequence_id.sequence_no if event.sequence_id else None,
-        "key_sha256": hashlib.sha256(event.key).hexdigest(),
         "payload_bytes": len(payload) if payload is not None else 0,
-        "payload_sha256": hashlib.sha256(payload).hexdigest() if payload else None,
     }
 
 
@@ -470,7 +468,7 @@ def stream(
     ca_file: Annotated[Path | None, typer.Option(envvar="MATIC_CA_FILE")] = None,
     credential_root: Annotated[Path | None, typer.Option()] = None,
 ) -> None:
-    """Stream privacy-safe metadata; raw payloads are not printed."""
+    """Stream event metadata without printing raw keys or payloads."""
 
     if target not in KNOWN_TARGETS:
         raise typer.BadParameter(f"unknown target: {target}", param_hint="target")
@@ -572,6 +570,13 @@ def decode_maps(
 ) -> None:
     """Decode collection responses and assemble correctly oriented map tiles."""
 
+    if find_spec("PIL") is None:
+        _abort(
+            RuntimeError(
+                "map decoding requires the maps extra; install "
+                "'unofficial-matic-sdk[maps]'"
+            )
+        )
     from matic_sdk.maps import (
         SUPPORTED_MAP_TARGETS,
         MapCollectionState,
@@ -619,6 +624,13 @@ def export_voxels(
 ) -> None:
     """Decode the actual 32x32x24 sparse surface representation to PLY."""
 
+    if find_spec("PIL") is None:
+        _abort(
+            RuntimeError(
+                "voxel export requires the maps extra; install "
+                "'unofficial-matic-sdk[maps]'"
+            )
+        )
     from matic_sdk.voxels import VoxelCollectionState, export_ply
 
     if coordinate_mode not in {"centered", "app-native"}:

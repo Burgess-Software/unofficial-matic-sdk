@@ -67,7 +67,7 @@ omitted rather than encoded as a zero-length bytes field. A successful unary
 RPC returns one `ChannelResponse`; its bytes field may itself be absent/default
 or populated.
 
-Eight command intents have live delivery evidence. Six were delivered once on
+Ten command intents have live delivery evidence. Six were delivered once on
 2026-07-22: Stop, StayPut, Pause, child lock, pet-waste avoidance, and voice.
 Stop used an initial one-shot
 check. A separate bounded verifier required parked telemetry, pre-read all
@@ -79,8 +79,12 @@ watchdog-backed joystick sequence produced 25 acknowledged velocity/zero/Stop
 sends with no failures and a docked-to-ready state transition. A bounded
 navigation run then exposed a yaw-frame bug; after correction, a second command
 reached its requested pose within 0.012 m and 0.078 rad, followed by an
-acknowledged Stop and ready state with no errors. No raw-actuation, destructive,
-network-changing, update, reboot, or shutdown command was live-tested.
+acknowledged Stop and ready state with no errors. An acknowledged Dock command
+then transitioned ready to returning to charging in about eight seconds with
+no errors. A bounded one-room Quick Vacuum run also verified normal coverage
+delivery and the active plan/session decoder before Stop and Dock returned the
+robot to charging. No raw-actuation, destructive, network-changing, update,
+reboot, or shutdown command was live-tested.
 
 The reusable verifier is
 [`tools/live_verify_safe_commands.py`](../tools/live_verify_safe_commands.py).

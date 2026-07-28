@@ -166,7 +166,13 @@ revealed that canonical heading had not crossed the same reflected coordinate
 transform as translation. Correcting the wire unit vector from
 `(cos(yaw), sin(yaw))` to `(-sin(yaw), -cos(yaw))` produced a second live run
 that reached the requested pose within 0.012 m and 0.078 rad. Stop was
-acknowledged, state returned to ready, and no robot errors appeared. No
+acknowledged, state returned to ready, and no robot errors appeared. A
+subsequent Dock command was acknowledged and transitioned ready to returning
+to charging in about eight seconds with no errors. A bounded one-room Quick
+Vacuum run then exposed a transient coverage-plan state with goals but no
+selected candidate. Treating that state as non-actionable until the next event
+allowed the friendly decoder to join the live mission, session, eight goals,
+and current region before Stop and Dock returned the robot to charging. No
 raw-actuation, destructive, network-changing, update, reboot, or shutdown
 command was live-tested.
 

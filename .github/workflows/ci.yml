@@ -19,15 +19,32 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
       - run: uv sync --all-extras --group dev
+      - run: uv run ruff format --check .
       - run: uv run ruff check .
-      - run: uv run pytest -p pytest_asyncio.plugin
+      - run: uv run mypy src/matic_sdk
+      - run: PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p pytest_asyncio.plugin
       - run: uv run python -m build
+      - name: Smoke-test base wheel
+        run: |
+          uv venv .base-wheel-venv
+          wheel_path=$(realpath dist/*.whl)
+          uv pip install --python .base-wheel-venv/bin/python "$wheel_path"
+          .base-wheel-venv/bin/matic --version
+          .base-wheel-venv/bin/matic collections list
+          .base-wheel-venv/bin/python -c "import matic_sdk; assert len(matic_sdk.KNOWN_TARGETS) == 43"
+      - name: Smoke-test source distribution
+        run: |
+          uv venv .sdist-venv
+          sdist_path=$(realpath dist/*.tar.gz)
+          uv pip install --python .sdist-venv/bin/python "$sdist_path"
+          .sdist-venv/bin/matic --version
+          .sdist-venv/bin/python -c "import matic_sdk; assert len(matic_sdk.KNOWN_TARGETS) == 43"
       - name: Smoke-test built wheel
         run: |
           uv venv .wheel-venv
@@ -39,7 +56,7 @@ jobs:
   repository-safety:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - run: python tools/scan_repository.py

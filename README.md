@@ -19,22 +19,20 @@ service without a cloud relay.
   device state, settings, schedules, history, media, and maps.
 - Assemble captured RGB, integrated, coverage, and semantic map tiles into
   correctly oriented PNG mosaics.
-  <img width="1024" height="928" alt="image" src="https://github.com/user-attachments/assets/58efbb9e-4180-4c8d-b38f-ff300f1c86b7" />
-
 - Export Matic's actual `32 x 32 x 24` sparse colored surface representation as
   a standard PLY point cloud.
-  <img width="2416" height="1338" alt="image" src="https://github.com/user-attachments/assets/df910ffe-de7b-4bc0-bf21-1c3847c25a78" />
-
 - Recover retained WebP thumbnails and images embedded in captured collection
   responses.
-- Stop, pause, or tell the robot to stay put using typed Python APIs that have
-  been delivered to a real robot.
+- Stop, pause, tell the robot to stay put, or send it back to charge using
+  typed Python APIs exercised against a real robot.
 - Drive with a dead-man joystick session or navigate to a mission pose through
   explicitly armed APIs exercised against a real robot.
-- Run normal room coverage, reprioritize an active plan, or clean a drawn
-  dry-stain/wet-spill area through explicitly armed, wire-verified APIs.
+- Run normal room coverage through an explicitly armed API exercised against a
+  real robot.
+- Reprioritize an active plan or clean a drawn dry-stain/wet-spill area through
+  explicitly armed, wire-verified APIs.
 
-The [command verification ledger](docs/command-verification.md) shows exactly
+The [command verification ledger](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/command-verification.md) shows exactly
 which controls were exercised live, which have offline wire proof, and which
 remain unavailable.
 
@@ -45,14 +43,13 @@ reachable from the same local network. Bluetooth enrollment currently requires
 Linux with BlueZ; Bluetooth is not needed after enrollment.
 
 ```bash
-git clone git@github.com:Burgess-Software/unofficial-matic-sdk.git
+git clone https://github.com/Burgess-Software/unofficial-matic-sdk.git
 cd unofficial-matic-sdk
 uv sync --all-extras --group dev
 uv run matic --help
 ```
 
-This repository is currently private, no package is published, and no license
-is granted at this stage.
+No package is currently published, and no license is granted at this stage.
 
 ### Pair once over Bluetooth
 
@@ -101,7 +98,9 @@ uv run matic status
 ```
 
 The status command authenticates, performs the Hermes handshake, and prints
-non-secret robot identity information. Routine SDK use is now LAN-only.
+robot identity metadata including its serial number and network addresses.
+Treat that output as private even though it does not contain the BotToken.
+Routine SDK use is now LAN-only.
 
 ## Read live robot data
 
@@ -111,7 +110,7 @@ List the 43 accepted collection targets:
 uv run matic collections list
 ```
 
-Stream privacy-safe event metadata for the latest robot pose:
+Stream event metadata without printing the raw latest-pose payload:
 
 ```bash
 uv run matic collections stream latest_pose --count 20 --duration 30
@@ -120,23 +119,24 @@ uv run matic collections stream latest_pose --count 20 --duration 30
 Record raw responses from several targets into a new private directory:
 
 ```bash
-uv run matic collections record telemetry-capture \
+uv run matic collections record captures/telemetry \
   --target latest_pose \
   --target kabuki_state \
   --target motor_status \
   --duration 30
 ```
 
-The stream command does not print raw payloads. The record command does save
-them, because they are needed for offline decoding; capture directories can
-contain sensitive household and device information.
+The stream command does not print raw payloads, keys, or stable content hashes,
+but its target, timing, sequence, and payload-size metadata can still be
+sensitive. The record command saves raw data because it is needed for offline
+decoding; capture directories can contain household and device information.
 
 ## Capture and decode maps
 
 Record compressed map tiles:
 
 ```bash
-uv run matic collections record map-capture \
+uv run matic collections record captures/map \
   --target map_compressed_rgb \
   --duration 20
 ```
@@ -144,7 +144,7 @@ uv run matic collections record map-capture \
 Assemble the tiles into correctly oriented PNGs:
 
 ```bash
-uv run matic maps decode map-capture \
+uv run matic maps decode captures/map \
   --output decoded-map \
   --target map_compressed_rgb
 ```
@@ -160,7 +160,7 @@ The compressed RGB map includes a sparse depth bit field rather than only a
 flat image. Export it as a colored binary PLY point cloud:
 
 ```bash
-uv run matic voxels export map-capture --output surface-map.ply
+uv run matic voxels export captures/map --output surface-map.ply
 ```
 
 Use `--all-depths` to include depths hidden by the official app's normal
@@ -173,11 +173,11 @@ Capture the thumbnail collection and extract any validated WebP containers it
 contains:
 
 ```bash
-uv run matic collections record thumbnail-capture \
+uv run matic collections record captures/thumbnails \
   --target coverage_session_thumbnails \
   --duration 10
 
-uv run matic media extract thumbnail-capture --output extracted-images
+uv run matic media extract captures/thumbnails --output extracted-images
 ```
 
 This recovers images already present in retained collection responses. It does
@@ -280,9 +280,10 @@ async def request_dock() -> None:
 asyncio.run(request_dock())
 ```
 
-Dock and the autonomous motion-changing codecs have exact offline wire evidence
-but have not been exercised live by this SDK. The watchdog-backed joystick path
-below has been acknowledged live through a docked-to-ready state transition.
+Dock has been exercised live through a ready-to-returning-to-charging state
+transition. Other autonomous motion codecs retain their individual evidence
+labels in the command ledger. The watchdog-backed joystick path below has been
+acknowledged live through a docked-to-ready state transition.
 
 ### Drive with the watchdog-backed joystick
 
@@ -328,7 +329,10 @@ watchdog and emergency-stop sequence.
 These methods use mission-relative coordinates and map UUIDs. Choose the one
 operation you intend to run; the calls are shown together only as an API
 reference. `x_meters`, `y_meters`, and `yaw_radians` all use the same canonical
-mission frame; a zero yaw points along positive X.
+mission frame; a zero yaw points along positive X. The numeric mission, region,
+and partition values below are placeholders, not coordinates for your robot.
+The SDK does not yet provide a friendly decoder for `latest_pose`, so this is
+an advanced API reference rather than a turnkey navigation example.
 
 ```python
 import asyncio
@@ -408,9 +412,9 @@ those input checks.
 ### Reprioritize active coverage
 
 `reprioritize_coverage()` implements the official Prioritize and Skip
-transformations. The live decoder joins the robot's active session and coverage
-plan by mission ID, preserving the goal IDs and cleaning specs the command must
-send back:
+transformations. The live-tested decoder joins the robot's active session and
+coverage plan by mission ID, preserving the goal IDs and cleaning specs the
+command must send back:
 
 ```python
 from matic_sdk import ReprioritizeAction
@@ -482,11 +486,11 @@ Child lock, pet-waste avoidance, and voice are supported. Their live checks
 wrote each setting's already-observed value, so delivery was verified without
 claiming that a setting transition was tested.
 
-See the [full command ledger](docs/command-verification.md) and
-[safety model](docs/safety.md) before using additional codecs. Unknown,
+See the [full command ledger](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/command-verification.md) and
+[safety model](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/safety.md) before using additional codecs. Unknown,
 partially reconstructed, or policy-disabled commands fail before network I/O.
-There is no public arbitrary-payload escape hatch, and an ambiguous command
-outcome is never retried automatically.
+The documented top-level API exposes no arbitrary-payload escape hatch, and an
+ambiguous command outcome is never retried automatically.
 
 ## Safety and privacy
 
@@ -515,12 +519,12 @@ outcome is never retried automatically.
 
 ## Documentation
 
-- [Command verification ledger](docs/command-verification.md)
-- [Control safety model](docs/safety.md)
-- [Protocol notes](docs/protocol.md)
-- [Research method](docs/research-method.md)
-- [Capability details](docs/status.md)
-- [Experimental remote transport](docs/remote.md)
+- [Command verification ledger](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/command-verification.md)
+- [Control safety model](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/safety.md)
+- [Protocol notes](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/protocol.md)
+- [Research method](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/research-method.md)
+- [Capability details](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/status.md)
+- [Experimental remote transport](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/remote.md)
 
 ## Development
 

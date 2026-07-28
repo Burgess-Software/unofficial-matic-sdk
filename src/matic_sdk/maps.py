@@ -80,6 +80,7 @@ def _parse_message(
         wire_type = tag & 7
         if number == 0:
             raise MapDecodeError("protobuf field number zero")
+        value: int | bytes
         if wire_type == 0:
             value, offset = _decode_varint(data, offset)
         elif wire_type in (1, 5):
@@ -511,14 +512,14 @@ def decode_map_event(
     )
     if selected is None:
         blobs = _collect_blobs(event.payload)
-        warning = (
+        target_warning = (
             "1,024-byte R8 payload is target-ambiguous; specify "
             "map_combined_coverage, map_semantics, map_semantics_override, or "
             "map-r8"
             if any(len(blob.data) == 1024 for blob in blobs)
             else "payload did not match a known map format"
         )
-        return DecodedMapEvent(event, (), (warning,))
+        return DecodedMapEvent(event, (), (target_warning,))
     fields = _parsed_or_none(event.payload)
     if fields is None:
         return DecodedMapEvent(event, (), ("map payload is not a protobuf message",))
@@ -543,16 +544,20 @@ def decode_map_event(
         floor = _extract_floor_rgba(fields, blobs)
         if floor is not None:
             add("floor-rgba", render_floor_rgba(floor))
-        surface: bytes | None = None
+        compressed_surface: bytes | None = None
         surface_array = _first_length(fields, 4)
         if surface_array is not None:
-            surface = _extract_ndarray_buffer(surface_array)
-        if surface is None or len(surface) != 3072:
+            compressed_surface = _extract_ndarray_buffer(surface_array)
+        if compressed_surface is None or len(compressed_surface) != 3072:
             candidate = _blob_with_size(blobs, 3072)
-            surface = candidate.data if candidate else None
+            compressed_surface = candidate.data if candidate else None
         rgb = _exact_fast_field(fields, 6)
-        if surface is not None and len(surface) == 3072 and rgb is not None:
-            surface_image, warning = render_compressed_surface(surface, rgb)
+        if (
+            compressed_surface is not None
+            and len(compressed_surface) == 3072
+            and rgb is not None
+        ):
+            surface_image, warning = render_compressed_surface(compressed_surface, rgb)
             add("surface-rgb", surface_image)
             if warning:
                 warnings.append(warning)
@@ -567,23 +572,23 @@ def decode_map_event(
         return DecodedMapEvent(event, tuple(tiles), tuple(warnings))
 
     if selected == "map_integrated":
-        surface: bytes | None = None
-        surface_array = _first_length(fields, 5)
-        if surface_array is not None:
-            surface = _extract_ndarray_buffer(surface_array)
-        if surface is None or len(surface) != 3072:
+        integrated_surface: bytes | None = None
+        integrated_surface_array = _first_length(fields, 5)
+        if integrated_surface_array is not None:
+            integrated_surface = _extract_ndarray_buffer(integrated_surface_array)
+        if integrated_surface is None or len(integrated_surface) != 3072:
             candidate = _blob_with_size(blobs, 3072)
-            surface = candidate.data if candidate else None
+            integrated_surface = candidate.data if candidate else None
         occupancy = _exact_fast_field(fields, 7)
         semantics = _exact_fast_field(fields, 8)
-        if surface is None or occupancy is None or semantics is None:
+        if integrated_surface is None or occupancy is None or semantics is None:
             return DecodedMapEvent(
                 event,
                 (),
                 ("integrated tile is missing a required surface or data buffer",),
             )
         override = _exact_fast_field(fields, 9) or bytes(512)
-        add("integrated-surface", _render_surface_mask(surface))
+        add("integrated-surface", _render_surface_mask(integrated_surface))
         for name, plane in (
             ("occupancy", occupancy),
             ("semantics", semantics),

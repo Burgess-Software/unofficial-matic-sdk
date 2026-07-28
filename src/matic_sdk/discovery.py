@@ -69,6 +69,8 @@ async def resolve_endpoint(config: MaticConfig) -> tuple[ResolvedAddress, ...]:
     unique: dict[tuple[socket.AddressFamily, str, int], ResolvedAddress] = {}
     for family, _, _, _, sockaddr in records:
         address, port = sockaddr[:2]
+        if not isinstance(address, str) or not isinstance(port, int):
+            raise OSError("resolver returned an unsupported socket address")
         key = (family, address, port)
         unique[key] = ResolvedAddress(family, address, port)
     return tuple(unique.values())

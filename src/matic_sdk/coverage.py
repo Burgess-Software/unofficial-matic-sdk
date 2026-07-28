@@ -390,11 +390,13 @@ def _decode_current_region(message: bytes) -> UUID:
 
 
 def decode_coverage_plan(payload: bytes) -> DecodedCoveragePlan | None:
-    """Decode the active command-relevant plan, or ``None`` for an idle plan.
+    """Decode an actionable plan, or ``None`` while idle or still selecting.
 
     Root geometry fields are intentionally skipped. If reports contain goals,
     every retained goal must be a complete standard-region goal in one
-    partition; unsupported or malformed variants fail closed.
+    partition; unsupported or malformed variants fail closed. The robot can
+    publish those goals before choosing a current candidate region, so that
+    transitional state remains non-actionable until a later update.
     """
 
     if not isinstance(payload, bytes):
@@ -449,7 +451,7 @@ def decode_coverage_plan(payload: bytes) -> DecodedCoveragePlan | None:
     if mission_message is None:
         raise CoverageDecodeError("coverage_plan.mission_id is required")
     if candidate_message is None:
-        raise CoverageDecodeError("coverage_plan.candidate_key is required")
+        return None
 
     goal_ids = [goal.goal_id for goal in goals]
     if len(goal_ids) != len(set(goal_ids)):

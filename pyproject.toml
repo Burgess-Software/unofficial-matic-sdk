@@ -11,12 +11,13 @@ requires-python = ">=3.11"
 authors = [
   { name = "Burgess Software LLC" },
 ]
+keywords = ["home-automation", "matic", "robotics", "sdk"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
   "Framework :: AsyncIO",
   "Intended Audience :: Developers",
-  "Operating System :: OS Independent",
+  "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -32,14 +33,18 @@ dependencies = [
   "typer>=0.15,<1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/Burgess-Software/unofficial-matic-sdk"
+Documentation = "https://github.com/Burgess-Software/unofficial-matic-sdk#readme"
+Issues = "https://github.com/Burgess-Software/unofficial-matic-sdk/issues"
+Repository = "https://github.com/Burgess-Software/unofficial-matic-sdk"
+
 [project.optional-dependencies]
 ble = ["bleak>=1,<2"]
 maps = ["Pillow>=10,<13"]
-remote = ["websockets>=14,<16"]
 all = [
   "bleak>=1,<2",
   "Pillow>=10,<13",
-  "websockets>=14,<16",
 ]
 
 [project.scripts]
@@ -48,7 +53,8 @@ matic = "matic_sdk.cli:app"
 [dependency-groups]
 dev = [
   "build>=1,<2",
-  "pytest>=8,<9",
+  "mypy>=2.3,<3",
+  "pytest>=9.0.3,<10",
   "pytest-asyncio>=0.25,<2",
   "ruff>=0.9,<1",
 ]

@@ -1,4 +1,4 @@
-"""Async, multiplexed HTTP/2 transport for raw gRPC streams."""
+"""Internal async, multiplexed HTTP/2 transport for raw gRPC streams."""
 
 from __future__ import annotations
 
@@ -63,8 +63,14 @@ class _StreamState:
     ended: bool = False
 
 
-def _metadata(values: Iterable[tuple[str, str]]) -> Metadata:
-    return tuple((str(name), str(value)) for name, value in values)
+def _metadata(values: Iterable[tuple[str | bytes, str | bytes]]) -> Metadata:
+    return tuple(
+        (
+            name.decode("utf-8") if isinstance(name, bytes) else name,
+            value.decode("utf-8") if isinstance(value, bytes) else value,
+        )
+        for name, value in values
+    )
 
 
 class GrpcStream:
@@ -210,7 +216,7 @@ class H2Transport:
             raise H2TransportError("transport cannot be reconnected after closure")
         context = create_ssl_context(self.config.tls)
         try:
-            self._reader, self._writer = await asyncio.wait_for(
+            reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(
                     self.config.host,
                     self.config.port,
@@ -219,7 +225,9 @@ class H2Transport:
                 ),
                 timeout=self.config.connect_timeout,
             )
-            ssl_object = self._writer.get_extra_info("ssl_object")
+            self._reader = reader
+            self._writer = writer
+            ssl_object = writer.get_extra_info("ssl_object")
             if ssl_object is None:
                 raise H2TransportError("Hermes connection did not negotiate TLS")
             self.tls_info = verify_peer(ssl_object, self.config.tls)
@@ -306,6 +314,8 @@ class H2Transport:
                 self._writer.close()
             return
         stream_id = getattr(event, "stream_id", None)
+        if not isinstance(stream_id, int):
+            return
         state = self._streams.get(stream_id)
         if state is None:
             return
@@ -475,10 +485,11 @@ class H2Transport:
         self._closing = True
         self._fail_all(H2TransportClosed("Hermes transport closed"))
         task = self._reader_task
-        if task is not None:
+        terminal_error = self._terminal_error
+        if task is not None and terminal_error is None:
             task.cancel()
         async with self._lock:
-            if self._connection is not None:
+            if self._connection is not None and terminal_error is None:
                 with contextlib.suppress(h2.exceptions.H2Error, OSError):
                     self._connection.close_connection()
                     await self._flush_locked()

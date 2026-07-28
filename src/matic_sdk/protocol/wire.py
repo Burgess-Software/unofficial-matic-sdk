@@ -104,6 +104,7 @@ def parse_fields(data: bytes, *, max_fields: int = 100_000) -> tuple[WireField, 
                 f"unsupported protobuf wire type {wire_value}"
             ) from exc
 
+        value: int | bytes
         if wire_type is WireType.VARINT:
             value, offset = decode_varint(data, offset)
         elif wire_type is WireType.FIXED64:

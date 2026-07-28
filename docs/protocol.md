@@ -58,7 +58,7 @@ field 2 is absent in that case; the target in field 1 and `hermes-target`
 metadata still identify the command. This canonical omission is not treated as
 a missing payload.
 
-Six codecs have the separate SDK live-delivery flag. The remaining exact
+Ten codecs have the separate SDK live-delivery flag. The remaining exact
 formats have offline wire proof only; raw motors are registry-disabled.
 Joystick sending is available only through the watchdog-backed teleoperation
 path, while direct `JoystickCommand` execution remains blocked. See the

@@ -9,7 +9,7 @@ import tempfile
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import BinaryIO, Literal
+from typing import Literal, Protocol
 
 from . import maps as _maps
 from .models.maps import CollectionEvent
@@ -23,6 +23,10 @@ _VERTEX = struct.Struct("<fffBBB")
 _VISIBLE_DEPTH_MASK = (1 << (DEPTH_LEVELS - OFFICIAL_MIN_VISIBLE_DEPTH)) - 1
 
 CoordinateMode = Literal["centered", "app-native"]
+
+
+class _BinaryWriter(Protocol):
+    def write(self, data: bytes, /) -> int: ...
 
 
 class VoxelDecodeError(ValueError):
@@ -257,7 +261,7 @@ def _ply_header(vertex_count: int, coordinate_mode: CoordinateMode) -> bytes:
 
 
 def write_ply(
-    output: BinaryIO,
+    output: _BinaryWriter,
     tiles: Sequence[CompressedVoxelTile],
     *,
     all_depths: bool = False,
@@ -316,16 +320,20 @@ def write_ply(
             f"counted {export_count} PLY vertices but wrote {written}"
         )
 
-    index_bounds = (
-        None
-        if index_min is None or index_max is None
-        else (tuple(index_min), tuple(index_max))
-    )
-    meter_bounds = (
-        None
-        if meter_min is None or meter_max is None
-        else (tuple(meter_min), tuple(meter_max))
-    )
+    index_bounds: tuple[tuple[int, int, int], tuple[int, int, int]] | None = None
+    if index_min is not None and index_max is not None:
+        index_bounds = (
+            (index_min[0], index_min[1], index_min[2]),
+            (index_max[0], index_max[1], index_max[2]),
+        )
+    meter_bounds: (
+        tuple[tuple[float, float, float], tuple[float, float, float]] | None
+    ) = None
+    if meter_min is not None and meter_max is not None:
+        meter_bounds = (
+            (meter_min[0], meter_min[1], meter_min[2]),
+            (meter_max[0], meter_max[1], meter_max[2]),
+        )
     return VoxelExportSummary(
         mission_id=next(iter(missions)),
         tile_count=len(tiles),

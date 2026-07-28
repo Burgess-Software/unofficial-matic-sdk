@@ -57,7 +57,13 @@ within 0.012 m and 0.078 rad of the requested position and heading. Navigation
 and Stop were acknowledged, operating state returned to ready, and no robot
 errors appeared.
 
-The other 22 exact formats have offline wire evidence only. No raw-actuation,
+An acknowledged Dock command then transitioned operating state from ready to
+returning to charging in about eight seconds, with no robot errors. A later
+bounded one-room Quick Vacuum run verified normal coverage delivery and the
+friendly active plan/session decoder before an acknowledged Stop and Dock
+returned the robot to charging.
+
+The other 20 exact formats have offline wire evidence only. No raw-actuation,
 destructive, network-changing, update, reboot, or shutdown command was
 live-tested. Raw-motor encoding is not registered at all. Risk capabilities
 control whether an informed caller may send an enabled exact codec; they do not

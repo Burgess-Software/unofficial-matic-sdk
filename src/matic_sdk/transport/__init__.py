@@ -1,1 +1,1 @@
-"""Network transports used by the SDK."""
+"""Internal network transports; not part of the supported public API."""
