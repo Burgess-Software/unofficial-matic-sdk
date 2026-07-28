@@ -4,6 +4,10 @@
 [![Python](https://img.shields.io/pypi/pyversions/unofficial-matic-sdk.svg)](https://pypi.org/project/unofficial-matic-sdk/)
 [![CI](https://github.com/Burgess-Software/unofficial-matic-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/Burgess-Software/unofficial-matic-sdk/actions/workflows/ci.yml)
 
+<p align="center">
+  <img width="720" alt="Matic sparse voxel surface" src="https://github.com/user-attachments/assets/df910ffe-de7b-4bc0-bf21-1c3847c25a78" />
+</p>
+
 An async Python SDK and CLI for connecting directly to a Matic robot you own.
 Pair once over Bluetooth, then read and control the robot through its
 authenticated local-network service without a cloud relay.
