@@ -275,3 +275,31 @@ async def test_session_cannot_be_used_before_or_after_arming() -> None:
     with pytest.raises(RuntimeError, match="cannot be reused"):
         async with session:
             pass
+
+
+@pytest.mark.asyncio
+async def test_closing_never_entered_session_sends_nothing() -> None:
+    velocities: list[JoystickCommand] = []
+    stops = 0
+
+    async def send_velocity(command: JoystickCommand) -> None:
+        velocities.append(command)
+
+    async def send_stop() -> None:
+        nonlocal stops
+        stops += 1
+
+    session = TeleopSession(
+        send_velocity,
+        send_stop,
+        motion_controls=armed_motion(),
+    )
+
+    await session.close()
+    await session.close()
+
+    assert velocities == []
+    assert stops == 0
+    with pytest.raises(RuntimeError, match="cannot be reused"):
+        async with session:
+            pass

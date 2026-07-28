@@ -80,9 +80,8 @@ def _decode_operational_state(payload: bytes) -> OperationalState:
             continue
         if field.wire_type is WireType.VARINT and isinstance(field.value, int):
             destination.append(field.value)
-        elif (
-            field.wire_type is WireType.LENGTH_DELIMITED
-            and isinstance(field.value, bytes)
+        elif field.wire_type is WireType.LENGTH_DELIMITED and isinstance(
+            field.value, bytes
         ):
             destination.extend(_packed_varints(field.value))
     return OperationalState(frozenset(codes), tuple(errors))
@@ -136,9 +135,7 @@ async def _run_bounded_verification(client: MaticClient) -> None:
 
     setting_values: dict[SettingAction, bool] = {}
     for action, target in _SETTING_READ_TARGETS.items():
-        setting_values[action] = _decode_binary_state(
-            await _read_state(client, target)
-        )
+        setting_values[action] = _decode_binary_state(await _read_state(client, target))
 
     capability = UnsafeControls.arm(UNSAFE_CONFIRMATION)
     try:
@@ -179,9 +176,7 @@ async def _run_bounded_verification(client: MaticClient) -> None:
             stage=f"immediately before {command_name}",
         )
         receipt = await sender()
-        after = _decode_operational_state(
-            await _read_state(client, "kabuki_state")
-        )
+        after = _decode_operational_state(await _read_state(client, "kabuki_state"))
         _emit(
             command=command_name,
             attempts=1,

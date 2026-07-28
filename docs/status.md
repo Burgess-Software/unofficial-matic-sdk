@@ -32,7 +32,7 @@ command families. The Hermes RPC and typed client-side models are static
 evidence. Each encoder in this SDK must carry its own verification level.
 
 The registry documents 65 command intents and exact Hermes targets for each.
-Twenty-four have exact wire formats and 23 have registered codecs. Forty-one
+Thirty have exact wire formats and 29 have registered codecs. Thirty-five
 remain fail-closed because their inner protobuf encoding is incomplete;
 raw-motor encoding is exact but also fails closed because hardware-safe ranges
 are unproven. The [command verification ledger](command-verification.md)
@@ -46,12 +46,12 @@ Neither path retried an unknown outcome. Hermes acknowledged all six requests.
 The robot remained docked and the settings retained their prior values, so
 these checks verify delivery but do not claim an unobservable transition.
 
-The other 18 exact formats have offline wire evidence only. No motion-changing,
+The other 24 exact formats have offline wire evidence only. No motion-changing,
 raw-actuation, destructive, network-changing, update, reboot, or shutdown
 command was live-tested. Raw-motor encoding is not registered at all. Risk
 capabilities control whether an informed caller may send an enabled exact
-codec; they do not upgrade its evidence level. Direct joystick execution
-remains blocked even though its codec is exact.
+codec; they do not upgrade its evidence level. Joystick control is enabled only
+through `MaticClient.teleop()`; direct executor use remains blocked.
 
 ## Firmware boundary
 

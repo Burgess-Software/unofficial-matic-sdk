@@ -11,6 +11,7 @@ from matic_sdk.protocol.collections import (
     decode_collection_response,
 )
 from matic_sdk.protocol.wire import encode_bytes_field
+from matic_sdk.safety import MOTION_CONFIRMATION, MotionControls
 from matic_sdk.telemetry import TelemetrySession
 
 
@@ -81,6 +82,28 @@ class ClosingTransport:
         self.closed = True
 
 
+class OrderedCommandTransport:
+    def __init__(self) -> None:
+        self.events: list[str] = []
+
+    async def unary(
+        self,
+        path: str,
+        payload: bytes,
+        *,
+        metadata: object,
+        mutating: bool,
+    ) -> object:
+        from matic_sdk.protocol.grpc import GrpcResponse
+
+        del path, payload, metadata, mutating
+        self.events.append("command")
+        return GrpcResponse((b"",), (), (("grpc-status", "0"),))
+
+    async def close(self) -> None:
+        self.events.append("transport.close")
+
+
 @pytest.mark.asyncio
 async def test_client_closes_every_resource_after_subscription_error() -> None:
     transport = ClosingTransport()
@@ -99,3 +122,52 @@ async def test_client_closes_every_resource_after_subscription_error() -> None:
     assert broken.closed
     assert healthy.closed
     assert transport.closed
+
+
+@pytest.mark.asyncio
+async def test_client_closes_active_teleop_before_transport() -> None:
+    transport = OrderedCommandTransport()
+    client = MaticClient(
+        MaticConfig(
+            "robot.invalid",
+            command_protocol_version=25,
+            tls=TlsConfig.pinned("00" * 32),
+        ),
+        transport,  # type: ignore[arg-type]
+        credentials=None,
+    )
+    session = client.teleop(
+        motion_controls=MotionControls.arm(MOTION_CONFIRMATION),
+    )
+    await session.__aenter__()
+
+    await client.close()
+
+    assert transport.events[-1] == "transport.close"
+    assert transport.events[:-1]
+    assert all(event == "command" for event in transport.events[:-1])
+
+
+@pytest.mark.asyncio
+async def test_client_close_does_not_send_from_never_entered_teleop() -> None:
+    transport = OrderedCommandTransport()
+    client = MaticClient(
+        MaticConfig(
+            "robot.invalid",
+            command_protocol_version=25,
+            tls=TlsConfig.pinned("00" * 32),
+        ),
+        transport,  # type: ignore[arg-type]
+        credentials=None,
+    )
+    client.teleop(
+        motion_controls=MotionControls.arm(MOTION_CONFIRMATION),
+    )
+
+    await client.close()
+
+    assert transport.events == ["transport.close"]
+    with pytest.raises(RuntimeError, match="closed"):
+        client.teleop(
+            motion_controls=MotionControls.arm(MOTION_CONFIRMATION),
+        )

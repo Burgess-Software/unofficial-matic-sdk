@@ -279,6 +279,7 @@ class TeleopSession:
         self._clock = _clock
         self._latest = JoystickCommand(0.0, 0.0)
         self._last_input_at: float | None = None
+        self._entered = False
         self._active = False
         self._closed = False
         self._failure: BaseException | None = None
@@ -301,6 +302,7 @@ class TeleopSession:
         if self._active or self._closed:
             raise RuntimeError("teleoperation sessions cannot be reused")
         self._motion_controls.assert_active()
+        self._entered = True
         self._active = True
         self._worker = asyncio.create_task(
             self._run(),
@@ -353,6 +355,10 @@ class TeleopSession:
                 raise TeleopDisconnectedError(
                     "teleoperation sender disconnected"
                 ) from self._failure
+            return
+        if not self._entered:
+            self._closed = True
+            self._closed_event.set()
             return
         self._active = False
         worker = self._worker

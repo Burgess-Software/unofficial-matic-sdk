@@ -45,12 +45,12 @@ command encodings or robot versions fail before network I/O.
 `MaticConfig.command_protocol_version` has no default: a future caller must
 provide a version observed from that robot before even a complete codec can run.
 
-The registry documents 65 intents and exact Hermes targets. Twenty-four inner
+The registry documents 65 intents and exact Hermes targets. Thirty inner
 command encodings have been reconstructed completely and retained as synthetic
-golden evidence; 23 have enabled codecs. Raw-motor bytes remain disabled until
+golden evidence; 29 have enabled codecs. Raw-motor bytes remain disabled until
 hardware-safe ranges are proven. Enabled `wire_verified` codecs can be selected
 only for the observed protocol version and remain subject to the command's
-risk gates. The other 41 intents also fail before network I/O.
+risk gates. The other 35 intents also fail before network I/O.
 
 An empty inner protobuf is a valid command body for the commands whose schema
 has no fields. Because protobuf omits default values, `ChannelRequest.value`
@@ -59,9 +59,9 @@ metadata still identify the command. This canonical omission is not treated as
 a missing payload.
 
 Six codecs have the separate SDK live-delivery flag. The remaining exact
-formats have offline wire proof only; raw motors are registry-disabled, and
-direct joystick execution is policy-blocked pending validation through the
-watchdog-backed teleoperation path. See the
+formats have offline wire proof only; raw motors are registry-disabled.
+Joystick sending is available only through the watchdog-backed teleoperation
+path, while direct `JoystickCommand` execution remains blocked. See the
 [per-command ledger](command-verification.md) for the exact boundary.
 
 This project contains reconstructed protocol descriptions and synthetic test

@@ -43,10 +43,36 @@ acknowledgement, and observed effect, but never authorization material.
 
 ## Teleoperation
 
-The joystick protobuf body and channel envelope are exact. Direct
-`JoystickCommand` execution is nevertheless blocked so callers cannot bypass
-the watchdog-backed `TeleopSession`. Live delivery remains disabled until that
-path and its dead-man behavior have been validated. The session design uses:
+The joystick protobuf body and channel envelope are exact. The SDK supports
+joystick sending only through `MaticClient.teleop()`, which constructs an
+executor-backed `TeleopSession`. Direct
+`CommandExecutor.execute(JoystickCommand(...))` execution remains blocked so a
+caller cannot bypass the watchdog, velocity limits, expiring input lease, or
+emergency Stop sequence.
+
+Create a short-lived motion capability, enter the returned session, and refresh
+the desired velocity while the operator is actively controlling the robot:
+
+```python
+from matic_sdk import MotionControls
+from matic_sdk.safety import MOTION_CONFIRMATION
+
+
+async def drive(robot):
+    motion = MotionControls.arm(MOTION_CONFIRMATION, ttl_seconds=30)
+    try:
+        async with robot.teleop(motion_controls=motion) as teleop:
+            await teleop.set_velocity(0.05, 0.0)
+            # Refresh set_velocity() while input remains active.
+            await teleop.release()
+    finally:
+        motion.disarm()
+```
+
+Every published velocity still passes through the normal protocol-version, TLS,
+motion-capability, codec, audit, and no-retry checks. Closing the client closes
+its teleoperation sessions before closing the transport. The session design
+uses:
 
 - latest-value publishing at 20 Hz;
 - default linear limit of 0.3 m/s;
@@ -56,6 +82,11 @@ path and its dead-man behavior have been validated. The session design uses:
 - a tick interval that cannot exceed the lease;
 - explicit zero velocity on release;
 - best-effort zero velocity followed by Stop on cancellation or disconnect.
+
+The SDK path and its local dead-man behavior are covered by automated tests, but
+joystick delivery and physical motion have not yet been live-validated against
+the robot. A Hermes acknowledgement would prove RPC delivery, not physical
+effect.
 
 This SDK cannot prove that the robot implements its own dead-man timeout. The
 operator must keep the robot in view and use a clear test area.

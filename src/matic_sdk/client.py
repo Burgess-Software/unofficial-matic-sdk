@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import weakref
 from collections.abc import Iterable
 from typing import Self
 
@@ -18,6 +19,14 @@ from matic_sdk.protocol.collections import (
     DEFAULT_SUBSCRIPTION_CONFIG,
     RawCollectionEvent,
     SubscriptionConfig,
+)
+from matic_sdk.safety import (
+    DEFAULT_INPUT_LEASE_SECONDS,
+    DEFAULT_MAX_LINEAR_MPS,
+    DEFAULT_TELEOP_RATE_HZ,
+    HARD_MAX_ANGULAR_RAD_S,
+    MotionControls,
+    TeleopSession,
 )
 from matic_sdk.telemetry import DEFAULT_CONTROL_FEEDBACK_TARGETS, TelemetrySession
 from matic_sdk.transport.commands import _HermesCommandTransport
@@ -46,6 +55,7 @@ class MaticClient:
             tls_identity_verified=config.tls.verified,
         )
         self._subscriptions: set[CollectionSubscription] = set()
+        self._teleop_sessions: weakref.WeakSet[TeleopSession] = weakref.WeakSet()
         self._closed = False
 
     @classmethod
@@ -157,11 +167,41 @@ class MaticClient:
     ) -> TelemetrySession:
         return TelemetrySession(self, targets)
 
+    def teleop(
+        self,
+        *,
+        motion_controls: MotionControls,
+        max_linear_mps: float = DEFAULT_MAX_LINEAR_MPS,
+        max_angular_rad_s: float = HARD_MAX_ANGULAR_RAD_S,
+        rate_hz: float = DEFAULT_TELEOP_RATE_HZ,
+        lease_seconds: float = DEFAULT_INPUT_LEASE_SECONDS,
+        shutdown_timeout_seconds: float = 1.0,
+    ) -> TeleopSession:
+        """Create a watchdog-backed joystick session on this connection."""
+
+        if self._closed:
+            raise RuntimeError("MaticClient is closed")
+        session = self.commands._teleop_session(
+            motion_controls=motion_controls,
+            max_linear_mps=max_linear_mps,
+            max_angular_rad_s=max_angular_rad_s,
+            rate_hz=rate_hz,
+            lease_seconds=lease_seconds,
+            shutdown_timeout_seconds=shutdown_timeout_seconds,
+        )
+        self._teleop_sessions.add(session)
+        return session
+
     async def close(self) -> None:
         if self._closed:
             return
         self._closed = True
         errors: list[BaseException] = []
+        for session in tuple(self._teleop_sessions):
+            try:
+                await session.close()
+            except BaseException as error:
+                errors.append(error)
         for subscription in tuple(self._subscriptions):
             try:
                 await subscription.aclose()
@@ -171,6 +211,7 @@ class MaticClient:
             await self.transport.close()
         except BaseException as error:
             errors.append(error)
+        self._teleop_sessions.clear()
         self._subscriptions.clear()
         if len(errors) == 1:
             raise errors[0]

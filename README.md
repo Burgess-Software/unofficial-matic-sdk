@@ -29,8 +29,9 @@ service without a cloud relay.
   responses.
 - Stop, pause, or tell the robot to stay put using typed Python APIs that have
   been delivered to a real robot.
-- Use explicitly armed, fail-closed APIs for additional controls whose target
-  and protobuf encoding have been recovered.
+- Drive with a dead-man joystick session, navigate to mission coordinates, run
+  normal room coverage, reprioritize an active plan, or clean a drawn
+  dry-stain/wet-spill area through explicitly armed APIs.
 
 The [command verification ledger](docs/command-verification.md) shows exactly
 which controls were exercised live, which have offline wire proof, and which
@@ -281,6 +282,155 @@ asyncio.run(request_dock())
 Dock and the other motion-changing codecs have exact offline wire evidence but
 have not been exercised live by this SDK.
 
+### Drive with the watchdog-backed joystick
+
+Joystick control is available only through `MaticClient.teleop()`. The session
+publishes the latest velocity at a bounded rate, expires stale input after 250
+ms by default, and sends zero velocity followed by Stop when it exits:
+
+```python
+import asyncio
+
+from matic_sdk import MaticClient, MaticConfig, MotionControls, TlsConfig
+from matic_sdk.safety import MOTION_CONFIRMATION
+
+
+async def drive_briefly() -> None:
+    config = MaticConfig(
+        host="ROBOT_HOST",
+        command_protocol_version=25,
+        tls=TlsConfig.pinned("VERIFIED_CERTIFICATE_SHA256"),
+    )
+    async with await MaticClient.connect_from_store(
+        "living-room", config
+    ) as robot:
+        motion = MotionControls.arm(MOTION_CONFIRMATION, ttl_seconds=30)
+        try:
+            async with robot.teleop(motion_controls=motion) as joystick:
+                await joystick.set_velocity(0.05, 0.0)
+                await asyncio.sleep(0.5)
+                await joystick.release()
+        finally:
+            motion.disarm()
+
+
+asyncio.run(drive_briefly())
+```
+
+Keep refreshing `set_velocity()` while input is active. Direct
+`execute(JoystickCommand(...))` calls are rejected so they cannot bypass the
+watchdog and emergency-stop sequence.
+
+### Navigate or start coverage
+
+These methods use mission-relative coordinates and map UUIDs. Choose the one
+operation you intend to run; the calls are shown together only as an API
+reference:
+
+```python
+import asyncio
+from uuid import UUID
+
+from matic_sdk import (
+    DrawnCircle,
+    MaticClient,
+    MaticConfig,
+    MissionPosture,
+    MotionControls,
+    StainMode,
+    TlsConfig,
+)
+from matic_sdk.safety import MOTION_CONFIRMATION
+
+
+async def run_one_motion_command() -> None:
+    config = MaticConfig(
+        host="ROBOT_HOST",
+        command_protocol_version=25,
+        tls=TlsConfig.pinned("VERIFIED_CERTIFICATE_SHA256"),
+    )
+    async with await MaticClient.connect_from_store(
+        "living-room", config
+    ) as robot:
+        motion = MotionControls.arm(MOTION_CONFIRMATION, ttl_seconds=30)
+        try:
+            destination = MissionPosture(
+                mission_id=42,
+                x_meters=1.0,
+                y_meters=2.0,
+                yaw_radians=0.0,
+            )
+
+            # Run exactly one intended operation. This example selects Navigate.
+            await robot.commands.navigate(destination, motion_controls=motion)
+
+            # Alternatives:
+            # await robot.commands.navigate_and_wait(
+            #     destination, motion_controls=motion
+            # )
+            # await robot.commands.navigate_and_explore(
+            #     destination, motion_controls=motion
+            # )
+            # await robot.commands.normal_coverage(
+            #     mission_id=42,
+            #     partition_id=UUID("PARTITION_UUID"),
+            #     region_ids=[UUID("REGION_UUID")],
+            #     motion_controls=motion,
+            # )
+            # await robot.commands.stain_mode(
+            #     mission_id=42,
+            #     stain_mode=StainMode.DRY_STAIN,
+            #     circles=[
+            #         DrawnCircle(
+            #             x_meters=1.0,
+            #             y_meters=2.0,
+            #             radius_meters=0.25,
+            #         )
+            #     ],
+            #     motion_controls=motion,
+            # )
+        finally:
+            motion.disarm()
+
+
+asyncio.run(run_one_motion_command())
+```
+
+Normal coverage supports vacuum, mop, or both plus Quick/Standard coverage.
+Stain mode reproduces the official DryStain and WetSpill goal plans. As an SDK
+safety constraint, it requires at least one circle with a positive finite
+radius even though the recovered native serializer itself does not establish
+those input checks.
+
+### Reprioritize active coverage
+
+`reprioritize_coverage()` implements the official Prioritize and Skip
+transformations. It needs the complete active `CoverageGoals` plan and current
+coverage-session UUID so surviving goal IDs and cleaning specs remain intact:
+
+```python
+from uuid import UUID
+
+from matic_sdk import ReprioritizeAction
+
+
+async def prioritize_next_region(robot, motion, current_goals) -> None:
+    await robot.commands.reprioritize_coverage(
+        action=ReprioritizeAction.PRIORITIZE,
+        mission_id=42,
+        goals=current_goals,
+        current_region_id=UUID("CURRENT_REGION_UUID"),
+        selected_region_id=UUID("REGION_TO_RUN_NEXT_UUID"),
+        current_session_id=UUID("COVERAGE_SESSION_UUID"),
+        motion_controls=motion,
+    )
+```
+
+Use `ReprioritizeAction.SKIP` to remove the current region block.
+The SDK does not yet provide a friendly live decoder that constructs
+`CoverageGoals`; callers must supply an exactly decoded active plan. The
+official Add and Redo reprioritization helpers are not exposed yet.
+
 ### Change a supported preference
 
 Persistent settings require a separate `UnsafeControls` capability. Running
@@ -345,8 +495,9 @@ outcome is never retried automatically.
 - Most collection payloads have a safe raw-byte interface but not yet a
   friendly high-level model.
 - Maps and voxels are decoded from captures; this is not a live map dashboard.
-- Direct joystick execution is blocked pending watchdog-path validation, and
-  raw-motor sending is disabled until hardware-safe ranges are known.
+- Joystick sending is supported only through the watchdog-backed teleoperation
+  path; direct command execution remains blocked. Raw-motor sending is disabled
+  until hardware-safe ranges are known.
 - The portal-backed remote transport is experimental and not currently
   reliable; normal operation is local-network only.
 - The SDK does not provide firmware images, root access, a filesystem, or an

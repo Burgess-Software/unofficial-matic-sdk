@@ -45,21 +45,21 @@ stream.
 
 ## Verification state
 
-The registry currently contains 65 intents. Twenty-four have exact protobuf
+The registry currently contains 65 intents. Thirty have exact protobuf
 formats and Hermes targets and therefore carry `wire_verified` evidence;
-23 have registered codecs. Raw-motor bytes are wire-verified but remain
+29 have registered codecs. Raw-motor bytes are wire-verified but remain
 policy-disabled because evidence-backed hardware ranges are unknown. The other
-41 expose static type or field evidence but no codec. See the [complete command
+35 expose static type or field evidence but no codec. See the [complete command
 ledger](command-verification.md) for every key, target, gate, and current
 blocker.
 
 Wire verification and live delivery are separate facts. A wire-verified format
 means its inner protobuf, target, and `ChannelRequest` envelope are exact; it
-does not claim that this SDK has sent the command, observed its effect, or has
-enough safety evidence to register it. Motion and hazardous encoders still
-require their explicit short-lived capabilities. Trace calibration requires
-both. The joystick encoder is exact but direct execution is blocked so it
-cannot bypass the watchdog-backed `TeleopSession` path.
+does not claim that this SDK has sent the command or observed its effect.
+Motion and hazardous encoders still require their explicit short-lived
+capabilities. Trace calibration requires both. Joystick control is available
+only through the watchdog-backed `MaticClient.teleop()` path; direct execution
+is blocked.
 
 `ChannelRequest` field 1 contains the channel name and field 2 contains the
 inner payload. For a valid empty protobuf command, field 2 is canonically

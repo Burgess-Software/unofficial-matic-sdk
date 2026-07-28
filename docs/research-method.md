@@ -126,8 +126,8 @@ claim of access to the robot's full SLAM volume, TSDF, ESDF, or triangle mesh.
 
 Static tracing recovered 65 command intents and their Hermes targets. Continued
 tracing through concrete conversion and generated Prost encoding paths, plus
-independent reconstruction and byte-level golden fixtures, produced 24 exact
-wire formats, 23 of which have enabled registry codecs. The public UniFFI
+independent reconstruction and byte-level golden fixtures, produced 30 exact
+wire formats, 29 of which have enabled registry codecs. The public UniFFI
 variant numbers were not protobuf tags; the trace
 followed their lift into Rust enum discriminants, concrete protocol types, and
 generated encoders.
@@ -144,8 +144,12 @@ encoder, and it is not live delivery evidence. Raw-motor encoding remains
 disabled because hardware-safe ranges are not proven. Commands with incomplete
 or policy-disabled encodings fail before opening a mutating stream. Exact
 motion and unsafe commands retain their separate short-lived capability gates;
-trace calibration requires both. Direct joystick execution is additionally
-blocked pending watchdog-path integration and live behavior validation.
+trace calibration requires both. Direct joystick execution remains blocked.
+The supported `MaticClient.teleop()` path connects the exact joystick encoder to
+the watchdog-backed session while retaining the executor's TLS, protocol,
+capability, audit, and no-retry boundaries. That local integration is
+automatically tested, but live delivery and physical behavior remain
+unvalidated.
 
 The SDK implementations of Stop, StayPut, Pause, child lock, pet-waste
 avoidance, and voice were exercised against an owner-authorized robot on

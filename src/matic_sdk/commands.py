@@ -7,20 +7,32 @@ import json
 import os
 import stat
 import threading
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from matic_sdk.models.control import (
     CommandReceipt,
     ControlCommand,
+    CoverageAction,
+    CoverageCleaningMode,
+    CoverageCommand,
+    CoverageGoals,
+    CoverageSetting,
+    DrawnCircle,
     JoystickCommand,
+    MissionPosture,
+    NavigationCommand,
+    NavigationMode,
     ObservedEffect,
     ObservedEffectStatus,
+    ReprioritizeAction,
+    ReprioritizeCoverageCommand,
     SettingAction,
     SettingsCommand,
+    StainMode,
     TransportAcknowledgement,
     UserAction,
     UserCommand,
@@ -33,7 +45,12 @@ from matic_sdk.protocol.commands import (
     ensure_protocol_compatible,
 )
 from matic_sdk.safety import (
+    DEFAULT_INPUT_LEASE_SECONDS,
+    DEFAULT_MAX_LINEAR_MPS,
+    DEFAULT_TELEOP_RATE_HZ,
+    HARD_MAX_ANGULAR_RAD_S,
     MotionControls,
+    TeleopSession,
     UnsafeControls,
     require_motion_controls,
     require_unsafe_controls,
@@ -177,6 +194,7 @@ class CommandExecutor:
         self._tls_identity_verified = tls_identity_verified
         self._registry = registry
         self._audit = audit_log if audit_log is not None else NullAuditLog()
+        self.__teleop_authority = object()
 
     @property
     def protocol_version(self) -> object:
@@ -192,6 +210,22 @@ class CommandExecutor:
     ) -> CommandReceipt:
         """Send exactly once and return delivery/effect results separately."""
 
+        return await self._execute_guarded(
+            command,
+            motion_controls=motion_controls,
+            unsafe_controls=unsafe_controls,
+            observe=observe,
+        )
+
+    async def _execute_guarded(
+        self,
+        command: ControlCommand,
+        *,
+        motion_controls: MotionControls | None = None,
+        unsafe_controls: UnsafeControls | None = None,
+        observe: ObservationCallback | None = None,
+        _teleop_authority: object | None = None,
+    ) -> CommandReceipt:
         spec = self._registry.spec_for(command)
         command_id = str(uuid4())
         issued_at = utc_now()
@@ -217,7 +251,10 @@ class CommandExecutor:
                 spec.requires_unsafe_controls,
                 unsafe_controls,
             )
-            if isinstance(command, JoystickCommand):
+            if (
+                isinstance(command, JoystickCommand)
+                and _teleop_authority is not self.__teleop_authority
+            ):
                 raise DirectJoystickUnsupported(
                     "JoystickCommand cannot be sent directly; use TeleopSession "
                     "so hard limits, input leases, and emergency Stop are enforced"
@@ -291,6 +328,36 @@ class CommandExecutor:
                 pass
             raise
 
+    def _teleop_session(
+        self,
+        *,
+        motion_controls: MotionControls,
+        max_linear_mps: float = DEFAULT_MAX_LINEAR_MPS,
+        max_angular_rad_s: float = HARD_MAX_ANGULAR_RAD_S,
+        rate_hz: float = DEFAULT_TELEOP_RATE_HZ,
+        lease_seconds: float = DEFAULT_INPUT_LEASE_SECONDS,
+        shutdown_timeout_seconds: float = 1.0,
+    ) -> TeleopSession:
+        """Build the sole executor-backed joystick path for ``MaticClient``."""
+
+        async def send_velocity(command: JoystickCommand) -> CommandReceipt:
+            return await self._execute_guarded(
+                command,
+                motion_controls=motion_controls,
+                _teleop_authority=self.__teleop_authority,
+            )
+
+        return TeleopSession(
+            send_velocity,
+            self.stop,
+            motion_controls=motion_controls,
+            max_linear_mps=max_linear_mps,
+            max_angular_rad_s=max_angular_rad_s,
+            rate_hz=rate_hz,
+            lease_seconds=lease_seconds,
+            shutdown_timeout_seconds=shutdown_timeout_seconds,
+        )
+
     async def stop(self) -> CommandReceipt:
         """Convenience wrapper for the stationary Stop intent."""
 
@@ -313,6 +380,119 @@ class CommandExecutor:
     async def dock(self, *, motion_controls: MotionControls) -> CommandReceipt:
         return await self.execute(
             UserCommand(UserAction.DOCK),
+            motion_controls=motion_controls,
+        )
+
+    async def navigate(
+        self,
+        destination: MissionPosture,
+        *,
+        motion_controls: MotionControls,
+    ) -> CommandReceipt:
+        """Navigate to one mission-relative coordinate."""
+
+        return await self.execute(
+            NavigationCommand(NavigationMode.NAVIGATE, destination),
+            motion_controls=motion_controls,
+        )
+
+    async def navigate_and_wait(
+        self,
+        destination: MissionPosture,
+        *,
+        motion_controls: MotionControls,
+    ) -> CommandReceipt:
+        """Navigate and install the official fixed 900-second wait condition."""
+
+        return await self.execute(
+            NavigationCommand(NavigationMode.NAVIGATE_AND_WAIT, destination),
+            motion_controls=motion_controls,
+        )
+
+    async def navigate_and_explore(
+        self,
+        destination: MissionPosture,
+        *,
+        motion_controls: MotionControls,
+    ) -> CommandReceipt:
+        """Navigate to a coordinate and then start exploration."""
+
+        return await self.execute(
+            NavigationCommand(
+                NavigationMode.NAVIGATE_AND_EXPLORE,
+                destination,
+            ),
+            motion_controls=motion_controls,
+        )
+
+    async def normal_coverage(
+        self,
+        *,
+        mission_id: int,
+        partition_id: UUID,
+        region_ids: Iterable[UUID],
+        motion_controls: MotionControls,
+        cleaning_mode: CoverageCleaningMode = CoverageCleaningMode.BOTH,
+        coverage_setting: CoverageSetting = CoverageSetting.STANDARD,
+        ordered: bool = False,
+    ) -> CommandReceipt:
+        """Start a normal coverage plan for one or more mapped regions."""
+
+        return await self.execute(
+            CoverageCommand(
+                CoverageAction.NORMAL,
+                mission_id=mission_id,
+                partition_id=partition_id,
+                region_ids=tuple(region_ids),
+                cleaning_mode=cleaning_mode,
+                coverage_setting=coverage_setting,
+                ordered=ordered,
+            ),
+            motion_controls=motion_controls,
+        )
+
+    async def reprioritize_coverage(
+        self,
+        *,
+        action: ReprioritizeAction,
+        mission_id: int,
+        goals: CoverageGoals,
+        current_region_id: UUID,
+        current_session_id: UUID,
+        motion_controls: MotionControls,
+        selected_region_id: UUID | None = None,
+    ) -> CommandReceipt:
+        """Prioritize another region or skip the current coverage region."""
+
+        return await self.execute(
+            ReprioritizeCoverageCommand(
+                action,
+                mission_id=mission_id,
+                goals=goals,
+                current_region_id=current_region_id,
+                current_session_id=current_session_id,
+                selected_region_id=selected_region_id,
+            ),
+            motion_controls=motion_controls,
+        )
+
+    async def stain_mode(
+        self,
+        *,
+        mission_id: int,
+        stain_mode: StainMode,
+        circles: Iterable[DrawnCircle],
+        motion_controls: MotionControls,
+    ) -> CommandReceipt:
+        """Start the official dry-stain or wet-spill localized program."""
+
+        return await self.execute(
+            CoverageCommand(
+                CoverageAction.STAIN_MODE,
+                mission_id=mission_id,
+                stain_mode=stain_mode,
+                circles=tuple(circles),
+            ),
             motion_controls=motion_controls,
         )
 

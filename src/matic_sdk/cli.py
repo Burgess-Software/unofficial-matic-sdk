@@ -725,7 +725,8 @@ def control_status() -> None:
                     "user.stop"
                 ).codec_available,
                 "motion_codecs_available": motion_available,
-                "direct_teleop_enabled": False,
+                "watchdog_teleop_enabled": True,
+                "direct_joystick_execute_enabled": False,
                 "remaining_fail_closed_commands": len(specs) - available,
             },
             indent=2,

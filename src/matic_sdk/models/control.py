@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from typing import ClassVar
 from uuid import UUID, uuid4
 
@@ -151,20 +151,146 @@ class CoverageAction(StrEnum):
     STAIN_MODE = "stain_mode"
 
 
+class CoverageCleaningMode(StrEnum):
+    """Cleaning mechanisms selected for a normal coverage run."""
+
+    VACUUM = "vacuum"
+    MOP = "mop"
+    BOTH = "vacuum_and_mop"
+
+
+class CoverageSetting(StrEnum):
+    """Coverage pass density displayed by the official client."""
+
+    QUICK = "quick"
+    STANDARD = "standard"
+
+
+class StainMode(StrEnum):
+    """Localized stain-cleaning program selected by the official client."""
+
+    DRY_STAIN = "dry_stain"
+    WET_SPILL = "wet_spill"
+
+
+class CoverageGoalSetting(IntEnum):
+    """Exact setting values carried by a serialized coverage goal."""
+
+    DEPRECATED_DEEP = 0
+    STANDARD = 1
+    QUICK = 2
+
+
+class CleaningFloor(IntEnum):
+    """Floor material selected by one coverage goal."""
+
+    HARD_FLOOR = 0
+    CARPET = 1
+
+
+class CoverageGoalCleaningMode(IntEnum):
+    """Cleaning mechanism selected by one coverage goal."""
+
+    VACUUM = 0
+    MOP = 1
+
+
+class CoverageBehavior(IntEnum):
+    """Path behavior selected by one coverage goal."""
+
+    INTERIOR = 0
+    PERIMETER = 1
+    TOEKICK = 2
+    TRANSITION = 3
+
+
+@dataclass(frozen=True, slots=True)
+class DrawnCircle:
+    """One mission-relative circular stain target."""
+
+    x_meters: float
+    y_meters: float
+    radius_meters: float
+
+
+@dataclass(frozen=True, slots=True)
+class CoverageGoalSpec:
+    """Wire-complete cleaning specification for one retained plan goal."""
+
+    setting: CoverageGoalSetting
+    floor: CleaningFloor
+    cleaning_mode: CoverageGoalCleaningMode
+    behavior: CoverageBehavior
+
+
+@dataclass(frozen=True, slots=True)
+class CoveragePlanGoal:
+    """One standard room goal from the robot's current coverage plan."""
+
+    goal_id: UUID
+    partition_id: UUID
+    region_id: UUID
+    spec: CoverageGoalSpec
+
+
+@dataclass(frozen=True, slots=True)
+class CoverageGoals:
+    """The robot's current goal sequence and its ordered/unordered marker."""
+
+    goals: tuple[CoveragePlanGoal, ...]
+    ordered: bool
+
+
+class ReprioritizeAction(StrEnum):
+    """Safe exact subset of the official reprioritization actions."""
+
+    PRIORITIZE = "prioritize"
+    SKIP = "skip"
+
+
 @dataclass(frozen=True, slots=True)
 class CoverageCommand(ControlCommand):
-    """Coverage intent; fields are SDK-level inputs, not wire fields."""
+    """Typed normal-coverage or localized stain-cleaning input.
+
+    The action-specific codecs reject fields that do not belong to the selected
+    variant so an ignored option cannot silently change the requested job.
+    Reprioritization uses a dedicated model because it carries the robot's
+    current goal plan and coverage-session identity.
+    """
 
     action: CoverageAction
-    mission_id: int | None = None
-    region_ids: tuple[str, ...] = ()
-    options: Mapping[str, object] = field(default_factory=dict, repr=False)
+    mission_id: int
+    partition_id: UUID | None = None
+    region_ids: tuple[UUID, ...] = ()
+    cleaning_mode: CoverageCleaningMode = CoverageCleaningMode.BOTH
+    coverage_setting: CoverageSetting = CoverageSetting.STANDARD
+    ordered: bool = False
+    stain_mode: StainMode | None = None
+    circles: tuple[DrawnCircle, ...] = ()
 
     command_prefix: ClassVar[str] = "coverage"
 
     @property
     def command_key(self) -> str:
         return f"{self.command_prefix}.{self.action.value}"
+
+
+@dataclass(frozen=True, slots=True)
+class ReprioritizeCoverageCommand(ControlCommand):
+    """Reorder or skip the current region without regenerating plan goals."""
+
+    action: ReprioritizeAction
+    mission_id: int
+    goals: CoverageGoals
+    current_region_id: UUID
+    current_session_id: UUID
+    selected_region_id: UUID | None = None
+
+    command_prefix: ClassVar[str] = "coverage"
+
+    @property
+    def command_key(self) -> str:
+        return f"{self.command_prefix}.reprioritize"
 
 
 class CleaningAction(StrEnum):
@@ -465,15 +591,25 @@ class CommandReceipt:
 __all__ = [
     "CleaningAction",
     "CleaningCommand",
+    "CleaningFloor",
     "CleaningIntensity",
     "CommandFamily",
     "CommandReceipt",
     "CommandRisk",
     "ControlCommand",
     "CoverageAction",
+    "CoverageBehavior",
+    "CoverageCleaningMode",
     "CoverageCommand",
+    "CoverageGoalCleaningMode",
+    "CoverageGoalSetting",
+    "CoverageGoalSpec",
+    "CoverageGoals",
+    "CoveragePlanGoal",
+    "CoverageSetting",
     "DeviceAction",
     "DeviceCommand",
+    "DrawnCircle",
     "ExplicitFloorCleaningMode",
     "JoystickCommand",
     "JukeboxTrack",
@@ -489,11 +625,14 @@ __all__ = [
     "ObservedEffect",
     "ObservedEffectStatus",
     "RawMotorCommand",
+    "ReprioritizeAction",
+    "ReprioritizeCoverageCommand",
     "ScheduleAction",
     "ScheduleCommand",
     "ScheduleEventKey",
     "SettingAction",
     "SettingsCommand",
+    "StainMode",
     "TelemetryAction",
     "TelemetryCommand",
     "TransportAckStatus",

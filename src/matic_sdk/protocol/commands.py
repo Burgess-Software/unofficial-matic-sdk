@@ -12,23 +12,34 @@ from __future__ import annotations
 
 import math
 import struct
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from matic_sdk.models.control import (
     CleaningAction,
     CleaningCommand,
+    CleaningFloor,
     CleaningIntensity,
     CommandFamily,
     CommandRisk,
     ControlCommand,
+    CoverageAction,
+    CoverageBehavior,
+    CoverageCleaningMode,
     CoverageCommand,
+    CoverageGoalCleaningMode,
+    CoverageGoals,
+    CoverageGoalSetting,
+    CoverageGoalSpec,
+    CoveragePlanGoal,
+    CoverageSetting,
     DeviceAction,
     DeviceCommand,
+    DrawnCircle,
     ExplicitFloorCleaningMode,
     JoystickCommand,
     LifecycleAction,
@@ -37,11 +48,15 @@ from matic_sdk.models.control import (
     MapEnvironmentCommand,
     MediaCommand,
     NavigationCommand,
+    NavigationMode,
     RawMotorCommand,
+    ReprioritizeAction,
+    ReprioritizeCoverageCommand,
     ScheduleAction,
     ScheduleCommand,
     SettingAction,
     SettingsCommand,
+    StainMode,
     TelemetryCommand,
     UserAction,
     UserCommand,
@@ -206,11 +221,7 @@ def _spec(
         known_hermes_target=(
             target
             if target is not None
-            else (
-                USER_COMMAND_HERMES_TARGET
-                if family is CommandFamily.USER
-                else None
-            )
+            else (USER_COMMAND_HERMES_TARGET if family is CommandFamily.USER else None)
         ),
         requires_unsafe_controls=unsafe,
         requires_motion_controls=(
@@ -299,9 +310,7 @@ class _VerifiedTraceCalibrationCodec:
             or not 0 <= mission_id <= 0xFFFFFFFF
         ):
             raise ValueError("user.trace_calibration requires a u32 mission_id")
-        mission = (
-            encode_fixed32_field(2, mission_id) if mission_id != 0 else b""
-        )
+        mission = encode_fixed32_field(2, mission_id) if mission_id != 0 else b""
         drive = encode_bytes_field(2, mission) + encode_bytes_field(3, b"")
         payload = encode_bytes_field(2, encode_bytes_field(6, drive))
         return EncodedCommand(payload, USER_COMMAND_HERMES_TARGET)
@@ -322,9 +331,7 @@ class _VerifiedCoverageSessionCodec:
         )
         session_id = user.coverage_session_id
         if not isinstance(session_id, UUID):
-            raise ValueError(
-                f"{user.command_key} requires coverage_session_id: UUID"
-            )
+            raise ValueError(f"{user.command_key} requires coverage_session_id: UUID")
         value = session_id.int
         high = value >> 64
         low = value & ((1 << 64) - 1)
@@ -438,6 +445,584 @@ class _VerifiedJoystickCodec:
         return EncodedCommand(payload, USER_COMMAND_HERMES_TARGET)
 
 
+def _float32_value(value: object, *, field_name: str) -> float:
+    bits = _float32_bits(value, field_name=field_name)
+    return struct.unpack("<f", struct.pack("<I", bits))[0]
+
+
+def _encode_float32_field(field_number: int, value: float) -> bytes:
+    if value == 0.0:
+        return b""
+    return encode_fixed32_field(
+        field_number,
+        _float32_bits(value, field_name=f"protobuf field {field_number}"),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedNavigationCodec:
+    """Exact mission-relative coordinate navigation encoder."""
+
+    mode: NavigationMode
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        if not isinstance(command, NavigationCommand) or command.mode is not self.mode:
+            raise TypeError(f"codec expects NavigationCommand({self.mode.value})")
+        destination = command.destination
+        mission_id = destination.mission_id
+        if (
+            isinstance(mission_id, bool)
+            or not isinstance(mission_id, int)
+            or not 0 <= mission_id <= 0xFFFFFFFF
+        ):
+            raise ValueError(f"{command.command_key} requires a u32 mission_id")
+
+        x_meters = _float32_value(
+            destination.x_meters,
+            field_name="destination.x_meters",
+        )
+        y_meters = _float32_value(
+            destination.y_meters,
+            field_name="destination.y_meters",
+        )
+        yaw_radians = _float32_value(
+            destination.yaw_radians,
+            field_name="destination.yaw_radians",
+        )
+        orientation = b"".join(
+            (
+                _encode_float32_field(1, math.cos(yaw_radians)),
+                _encode_float32_field(2, math.sin(yaw_radians)),
+            )
+        )
+        posture = b"".join(
+            (
+                _encode_float32_field(1, -y_meters),
+                _encode_float32_field(2, -x_meters),
+                encode_bytes_field(4, orientation),
+            )
+        )
+        mission = encode_fixed32_field(2, mission_id) if mission_id != 0 else b""
+        navigate_to = encode_bytes_field(1, posture) + encode_bytes_field(2, mission)
+        if self.mode is NavigationMode.NAVIGATE_AND_WAIT:
+            # The official variant installs a fixed 900-second wait condition:
+            # field4 -> field1 -> field1(duration), plus an explicitly present
+            # field2 whose value is zero.
+            wait_condition = encode_bytes_field(
+                1,
+                encode_bytes_field(1, encode_varint_field(1, 900))
+                + encode_varint_field(2, 0),
+            )
+            navigate_to += encode_bytes_field(4, wait_condition)
+
+        drive = encode_bytes_field(4, navigate_to)
+        payload = encode_bytes_field(2, drive)
+        if self.mode is NavigationMode.NAVIGATE_AND_EXPLORE:
+            # The app combines NavigateTo with the same Explore background task
+            # emitted by UserCommand.Explore.
+            payload += bytes.fromhex("7a0a0a082a060a021a001002")
+        return EncodedCommand(payload, USER_COMMAND_HERMES_TARGET)
+
+
+def _wrapped_uuid(value: UUID) -> bytes:
+    high = value.int >> 64
+    low = value.int & ((1 << 64) - 1)
+    fixed128 = b"".join(
+        (
+            encode_fixed64_field(1, high) if high != 0 else b"",
+            encode_fixed64_field(2, low) if low != 0 else b"",
+        )
+    )
+    return encode_bytes_field(2, fixed128)
+
+
+def _validate_coverage_mission_id(mission_id: object, *, command_key: str) -> int:
+    if (
+        isinstance(mission_id, bool)
+        or not isinstance(mission_id, int)
+        or not 0 <= mission_id <= 0xFFFFFFFF
+    ):
+        raise ValueError(f"{command_key} requires a u32 mission_id")
+    return mission_id
+
+
+def _encode_coverage_spec(
+    *,
+    setting: int,
+    floor: int,
+    cleaning_mode: int,
+    behavior: int,
+) -> bytes:
+    """Encode four present proto2-style scalar options, including zeroes."""
+
+    return b"".join(
+        (
+            encode_varint_field(1, setting),
+            encode_varint_field(2, floor),
+            encode_varint_field(4, cleaning_mode),
+            encode_varint_field(5, behavior),
+        )
+    )
+
+
+def _encode_coverage_goal_header(*, goal_id: UUID, spec: bytes) -> bytes:
+    round_key = encode_bytes_field(2, _wrapped_uuid(goal_id))
+    return encode_bytes_field(
+        6,
+        encode_bytes_field(1, round_key) + encode_bytes_field(3, spec),
+    )
+
+
+def _encode_region_target(*, partition_id: UUID, region_id: UUID) -> bytes:
+    return b"".join(
+        (
+            encode_bytes_field(
+                1,
+                encode_bytes_field(1, _wrapped_uuid(partition_id)),
+            ),
+            encode_bytes_field(2, encode_bytes_field(1, b"")),
+            encode_bytes_field(
+                3,
+                encode_bytes_field(
+                    3,
+                    encode_bytes_field(2, _wrapped_uuid(region_id)),
+                ),
+            ),
+        )
+    )
+
+
+def _encode_drawn_area_target(
+    *,
+    partition_id: UUID,
+    circles: tuple[DrawnCircle, ...],
+) -> bytes:
+    encoded_circles = []
+    for index, circle in enumerate(circles):
+        x_meters = _float32_value(
+            circle.x_meters,
+            field_name=f"circles[{index}].x_meters",
+        )
+        y_meters = _float32_value(
+            circle.y_meters,
+            field_name=f"circles[{index}].y_meters",
+        )
+        radius_meters = _float32_value(
+            circle.radius_meters,
+            field_name=f"circles[{index}].radius_meters",
+        )
+        if radius_meters <= 0.0:
+            raise ValueError("stain circle radii must be greater than zero")
+        point = _encode_float32_field(1, -y_meters) + _encode_float32_field(
+            2, -x_meters
+        )
+        point_circle = encode_bytes_field(1, point) + encode_fixed32_field(
+            2,
+            _float32_bits(
+                radius_meters,
+                field_name=f"circles[{index}].radius_meters",
+            ),
+        )
+        encoded_circles.append(encode_bytes_field(1, point_circle))
+
+    circles_message = b"".join(encoded_circles)
+    drawn_area = encode_bytes_field(2, circles_message)
+    return b"".join(
+        (
+            encode_bytes_field(
+                1,
+                encode_bytes_field(1, _wrapped_uuid(partition_id)),
+            ),
+            encode_bytes_field(2, encode_bytes_field(3, drawn_area)),
+            encode_bytes_field(3, encode_bytes_field(2, b"")),
+        )
+    )
+
+
+def _encode_coverage_envelope(
+    *,
+    mission_id: int,
+    goals: bytes,
+    session_id: UUID,
+    command_id: UUID,
+) -> EncodedCommand:
+    coverage = b"".join(
+        (
+            encode_bytes_field(
+                2,
+                encode_bytes_field(2, encode_bytes_field(1, b"")),
+            ),
+            encode_bytes_field(
+                3,
+                encode_fixed32_field(2, mission_id) if mission_id != 0 else b"",
+            ),
+            encode_bytes_field(5, goals),
+            encode_bytes_field(
+                6,
+                encode_bytes_field(2, _wrapped_uuid(session_id)),
+            ),
+            encode_bytes_field(
+                7,
+                encode_bytes_field(1, _wrapped_uuid(command_id)),
+            ),
+        )
+    )
+    payload = encode_bytes_field(
+        15,
+        encode_bytes_field(1, encode_bytes_field(3, coverage)),
+    )
+    return EncodedCommand(payload, USER_COMMAND_HERMES_TARGET)
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedNormalCoverageCodec:
+    """Exact normal room-coverage encoder."""
+
+    command_id_factory: Callable[[], UUID] = uuid4
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        if (
+            not isinstance(command, CoverageCommand)
+            or command.action is not CoverageAction.NORMAL
+        ):
+            raise TypeError("codec expects CoverageCommand(normal)")
+        mission_id = _validate_coverage_mission_id(
+            command.mission_id,
+            command_key=command.command_key,
+        )
+        if not isinstance(command.partition_id, UUID):
+            raise ValueError("coverage.normal requires partition_id: UUID")
+        if not isinstance(command.region_ids, tuple):
+            raise ValueError("coverage.normal region_ids must be a tuple")
+        if not command.region_ids:
+            raise ValueError("coverage.normal requires at least one region_id")
+        if any(not isinstance(region_id, UUID) for region_id in command.region_ids):
+            raise ValueError("coverage.normal region_ids must contain UUID values")
+        if not isinstance(command.cleaning_mode, CoverageCleaningMode):
+            raise ValueError("coverage.normal requires an exact cleaning mode")
+        if not isinstance(command.coverage_setting, CoverageSetting):
+            raise ValueError("coverage.normal requires an exact coverage setting")
+        if not isinstance(command.ordered, bool):
+            raise ValueError("coverage.normal ordered must be a boolean")
+        if not isinstance(command.circles, tuple):
+            raise ValueError("coverage.normal circles must be a tuple")
+        if command.stain_mode is not None or command.circles:
+            raise ValueError("coverage.normal does not accept stain-mode fields")
+
+        setting = {
+            CoverageSetting.STANDARD: 1,
+            CoverageSetting.QUICK: 2,
+        }[command.coverage_setting]
+        specs: list[bytes] = []
+        if command.cleaning_mode in {
+            CoverageCleaningMode.VACUUM,
+            CoverageCleaningMode.BOTH,
+        }:
+            for floor in (0, 1):
+                for behavior in range(4):
+                    specs.append(
+                        _encode_coverage_spec(
+                            setting=setting,
+                            floor=floor,
+                            cleaning_mode=0,
+                            behavior=behavior,
+                        )
+                    )
+        if command.cleaning_mode in {
+            CoverageCleaningMode.MOP,
+            CoverageCleaningMode.BOTH,
+        }:
+            for behavior in range(4):
+                specs.append(
+                    _encode_coverage_spec(
+                        setting=setting,
+                        floor=0,
+                        cleaning_mode=1,
+                        behavior=behavior,
+                    )
+                )
+
+        goal_field = 1 if command.ordered else 2
+        goals = b"".join(
+            encode_bytes_field(
+                goal_field,
+                self._goal(
+                    partition_id=command.partition_id,
+                    region_id=region_id,
+                    spec=spec,
+                ),
+            )
+            for region_id in command.region_ids
+            for spec in specs
+        )
+        return _encode_coverage_envelope(
+            mission_id=mission_id,
+            goals=goals,
+            session_id=self._next_id(),
+            command_id=self._next_id(),
+        )
+
+    def _goal(
+        self,
+        *,
+        partition_id: UUID,
+        region_id: UUID,
+        spec: bytes,
+    ) -> bytes:
+        goal = _encode_coverage_goal_header(
+            goal_id=self._next_id(),
+            spec=spec,
+        )
+        target = _encode_region_target(
+            partition_id=partition_id,
+            region_id=region_id,
+        )
+        return goal + encode_bytes_field(7, target)
+
+    def _next_id(self) -> UUID:
+        value = self.command_id_factory()
+        if not isinstance(value, UUID):
+            raise TypeError("coverage command_id_factory must return UUID")
+        return value
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedStainCoverageCodec:
+    """Exact localized dry-stain and wet-spill coverage encoder."""
+
+    command_id_factory: Callable[[], UUID] = uuid4
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        if (
+            not isinstance(command, CoverageCommand)
+            or command.action is not CoverageAction.STAIN_MODE
+        ):
+            raise TypeError("codec expects CoverageCommand(stain_mode)")
+        mission_id = _validate_coverage_mission_id(
+            command.mission_id,
+            command_key=command.command_key,
+        )
+        if not isinstance(command.region_ids, tuple):
+            raise ValueError("coverage.stain_mode region_ids must be a tuple")
+        if command.partition_id is not None or command.region_ids:
+            raise ValueError("coverage.stain_mode does not accept room targets")
+        if command.cleaning_mode is not CoverageCleaningMode.BOTH:
+            raise ValueError(
+                "coverage.stain_mode selects its cleaning program from stain_mode"
+            )
+        if command.coverage_setting is not CoverageSetting.STANDARD:
+            raise ValueError("coverage.stain_mode does not accept a coverage setting")
+        if command.ordered is not False:
+            raise ValueError("coverage.stain_mode goals are always unordered")
+        if not isinstance(command.stain_mode, StainMode):
+            raise ValueError("coverage.stain_mode requires an exact stain_mode")
+        if not isinstance(command.circles, tuple):
+            raise ValueError("coverage.stain_mode circles must be a tuple")
+        if not command.circles:
+            raise ValueError("coverage.stain_mode requires at least one circle")
+        if any(not isinstance(circle, DrawnCircle) for circle in command.circles):
+            raise ValueError(
+                "coverage.stain_mode circles must contain DrawnCircle values"
+            )
+
+        # This generation order is observable in the native conversion path:
+        # session id, synthetic partition id, one id per goal, final command id.
+        session_id = self._next_id()
+        synthetic_partition_id = self._next_id()
+        target = _encode_drawn_area_target(
+            partition_id=synthetic_partition_id,
+            circles=command.circles,
+        )
+
+        specs: list[bytes] = []
+        if command.stain_mode is StainMode.DRY_STAIN:
+            for floor in (0, 1):
+                for behavior in range(4):
+                    specs.append(
+                        _encode_coverage_spec(
+                            setting=1,
+                            floor=floor,
+                            cleaning_mode=0,
+                            behavior=behavior,
+                        )
+                    )
+        for _ in range(3):
+            for behavior in range(4):
+                specs.append(
+                    _encode_coverage_spec(
+                        setting=0,
+                        floor=0,
+                        cleaning_mode=1,
+                        behavior=behavior,
+                    )
+                )
+
+        goals = b"".join(
+            encode_bytes_field(
+                2,
+                _encode_coverage_goal_header(
+                    goal_id=self._next_id(),
+                    spec=spec,
+                )
+                + encode_bytes_field(7, target),
+            )
+            for spec in specs
+        )
+        return _encode_coverage_envelope(
+            mission_id=mission_id,
+            goals=goals,
+            session_id=session_id,
+            command_id=self._next_id(),
+        )
+
+    def _next_id(self) -> UUID:
+        value = self.command_id_factory()
+        if not isinstance(value, UUID):
+            raise TypeError("coverage command_id_factory must return UUID")
+        return value
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedReprioritizeCoverageCodec:
+    """Exact Prioritize/Skip transformation and coverage-plan encoder."""
+
+    command_id_factory: Callable[[], UUID] = uuid4
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        if not isinstance(command, ReprioritizeCoverageCommand):
+            raise TypeError("codec expects ReprioritizeCoverageCommand")
+        mission_id = _validate_coverage_mission_id(
+            command.mission_id,
+            command_key=command.command_key,
+        )
+        if not isinstance(command.action, ReprioritizeAction):
+            raise ValueError("coverage.reprioritize requires Prioritize or Skip")
+        partition_is_valid = self._validate_goals(command.goals)
+        if not isinstance(command.current_region_id, UUID):
+            raise ValueError("coverage.reprioritize requires current_region_id: UUID")
+        if not isinstance(command.current_session_id, UUID):
+            raise ValueError("coverage.reprioritize requires current_session_id: UUID")
+
+        if not partition_is_valid:
+            transformed = command.goals.goals
+        elif command.action is ReprioritizeAction.PRIORITIZE:
+            selected = command.selected_region_id
+            if not isinstance(selected, UUID):
+                raise ValueError(
+                    "coverage.reprioritize Prioritize requires selected_region_id: UUID"
+                )
+            current = tuple(
+                goal
+                for goal in command.goals.goals
+                if goal.region_id == command.current_region_id
+            )
+            remaining = tuple(
+                goal
+                for goal in command.goals.goals
+                if goal.region_id != command.current_region_id
+            )
+            selected_indices = [
+                index
+                for index, goal in enumerate(remaining)
+                if goal.region_id == selected
+            ]
+            insertion_index = selected_indices[-1] + 1 if selected_indices else 0
+            transformed = (
+                remaining[:insertion_index] + current + remaining[insertion_index:]
+            )
+        else:
+            transformed = tuple(
+                goal
+                for goal in command.goals.goals
+                if goal.region_id != command.current_region_id
+            )
+
+        goal_field = 1 if command.goals.ordered else 2
+        goals = b"".join(
+            encode_bytes_field(goal_field, self._encode_goal(goal))
+            for goal in transformed
+        )
+        return _encode_coverage_envelope(
+            mission_id=mission_id,
+            goals=goals,
+            session_id=command.current_session_id,
+            command_id=self._next_id(),
+        )
+
+    @staticmethod
+    def _validate_goals(goals: object) -> bool:
+        if not isinstance(goals, CoverageGoals):
+            raise ValueError("coverage.reprioritize requires a CoverageGoals plan")
+        if not isinstance(goals.ordered, bool):
+            raise ValueError("coverage goals ordered must be a boolean")
+        if not isinstance(goals.goals, tuple):
+            raise ValueError("coverage goals must be a tuple")
+        goal_ids: set[UUID] = set()
+        for goal in goals.goals:
+            if not isinstance(goal, CoveragePlanGoal):
+                raise ValueError("coverage goals must contain CoveragePlanGoal values")
+            if not all(
+                isinstance(value, UUID)
+                for value in (
+                    goal.goal_id,
+                    goal.partition_id,
+                    goal.region_id,
+                )
+            ):
+                raise ValueError("coverage goal identifiers must be UUID values")
+            spec = goal.spec
+            if (
+                not isinstance(spec, CoverageGoalSpec)
+                or not isinstance(spec.setting, CoverageGoalSetting)
+                or not isinstance(spec.floor, CleaningFloor)
+                or not isinstance(
+                    spec.cleaning_mode,
+                    CoverageGoalCleaningMode,
+                )
+                or not isinstance(spec.behavior, CoverageBehavior)
+            ):
+                raise ValueError(
+                    "coverage goals require exact typed cleaning specifications"
+                )
+            if (
+                spec.cleaning_mode is CoverageGoalCleaningMode.MOP
+                and spec.floor is CleaningFloor.CARPET
+            ):
+                raise ValueError("coverage goals cannot mop carpet")
+            if goal.goal_id in goal_ids:
+                raise ValueError("coverage goal IDs must be unique")
+            goal_ids.add(goal.goal_id)
+        if not goals.goals:
+            return False
+        partition_id = goals.goals[0].partition_id
+        return all(goal.partition_id == partition_id for goal in goals.goals)
+
+    @staticmethod
+    def _encode_goal(goal: CoveragePlanGoal) -> bytes:
+        spec = _encode_coverage_spec(
+            setting=int(goal.spec.setting),
+            floor=int(goal.spec.floor),
+            cleaning_mode=int(goal.spec.cleaning_mode),
+            behavior=int(goal.spec.behavior),
+        )
+        return _encode_coverage_goal_header(
+            goal_id=goal.goal_id,
+            spec=spec,
+        ) + encode_bytes_field(
+            7,
+            _encode_region_target(
+                partition_id=goal.partition_id,
+                region_id=goal.region_id,
+            ),
+        )
+
+    def _next_id(self) -> UUID:
+        value = self.command_id_factory()
+        if not isinstance(value, UUID):
+            raise TypeError("coverage command_id_factory must return UUID")
+        return value
+
+
 def _float32_bits(value: object, *, field_name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{field_name} must be a finite float32")
@@ -486,9 +1071,7 @@ class _VerifiedEmptyMapCodec:
             not isinstance(command, MapEnvironmentCommand)
             or command.action is not self.action
         ):
-            raise TypeError(
-                f"codec expects MapEnvironmentCommand({self.action.value})"
-            )
+            raise TypeError(f"codec expects MapEnvironmentCommand({self.action.value})")
         if command.mission_id is not None or command.change_set:
             raise ValueError(f"{command.command_key} does not accept arguments")
         return EncodedCommand(b"", self.target)
@@ -544,9 +1127,7 @@ class _VerifiedConfigureShippingCodec:
                 command.discoverable_seconds,
             )
         ):
-            raise ValueError(
-                "device.configure_shipping accepts only retain_user_data"
-            )
+            raise ValueError("device.configure_shipping accepts only retain_user_data")
         if not isinstance(command.retain_user_data, bool):
             raise ValueError(
                 "device.configure_shipping requires retain_user_data: bool"
@@ -581,10 +1162,16 @@ class _VerifiedLifecycleCodec:
             or command.action is not self.action
         ):
             raise TypeError(f"codec expects LifecycleCommand({self.action.value})")
-        return EncodedCommand(self.payload, "reboot_command" if self.action in {
-            LifecycleAction.REBOOT,
-            LifecycleAction.SHUTDOWN,
-        } else "update_command")
+        return EncodedCommand(
+            self.payload,
+            "reboot_command"
+            if self.action
+            in {
+                LifecycleAction.REBOOT,
+                LifecycleAction.SHUTDOWN,
+            }
+            else "update_command",
+        )
 
 
 # This inventory is intentionally explicit. It remains useful documentation
@@ -746,7 +1333,19 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.MOTION,
         NavigationCommand,
         "NavigationCommand.Navigate",
+        fields=(
+            "missionId: u32",
+            "xMeters: float32",
+            "yMeters: float32",
+            "yawRadians: float32",
+        ),
         target=USER_COMMAND_HERMES_TARGET,
+        wire_verified=True,
+        evidence=(
+            "Matic Android 1.151.0 and 1.167.0 native to_proto and prost "
+            "encoder paths prove the coordinate transform and nested envelope; "
+            "motion-capable and not live-tested"
+        ),
     ),
     _spec(
         "navigation.navigate_and_wait",
@@ -754,7 +1353,20 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.MOTION,
         NavigationCommand,
         "NavigationCommand.NavigateAndWait",
+        fields=(
+            "missionId: u32",
+            "xMeters: float32",
+            "yMeters: float32",
+            "yawRadians: float32",
+            "fixedWaitSeconds: 900",
+        ),
         target=USER_COMMAND_HERMES_TARGET,
+        wire_verified=True,
+        evidence=(
+            "Matic Android 1.151.0 and 1.167.0 native variant conversion and "
+            "prost encoder paths prove NavigateTo field 4 and its fixed wait; "
+            "motion-capable and not live-tested"
+        ),
     ),
     _spec(
         "navigation.navigate_and_explore",
@@ -762,7 +1374,20 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.MOTION,
         NavigationCommand,
         "UserCommand.NavigationAndExplore",
+        fields=(
+            "missionId: u32",
+            "xMeters: float32",
+            "yMeters: float32",
+            "yawRadians: float32",
+            "Explore background task",
+        ),
         target=USER_COMMAND_HERMES_TARGET,
+        wire_verified=True,
+        evidence=(
+            "Matic Android 1.151.0 native UserCommand conversion and task "
+            "encoders prove the NavigateTo plus Explore envelopes; "
+            "motion-capable and not live-tested"
+        ),
     ),
     _spec(
         "coverage.normal",
@@ -770,15 +1395,44 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.MOTION,
         CoverageCommand,
         "NormalCoverageCommand",
+        fields=(
+            "missionId: u32",
+            "partitionId: UUID",
+            "regionIds: list<UUID>",
+            "cleaningMode: DisplayedCleaningMode",
+            "coverageSetting: CoverageSetting",
+            "ordered: bool",
+        ),
         target=USER_COMMAND_HERMES_TARGET,
+        wire_verified=True,
+        evidence=(
+            "Matic Android 1.151.0 native CoverageCommand and Goal encoder "
+            "paths plus an official Matic Android 1.167.0 offline synthetic "
+            "golden vector; motion-capable and not live-tested"
+        ),
     ),
     _spec(
         "coverage.reprioritize",
         CommandFamily.COVERAGE,
         CommandRisk.MOTION,
-        CoverageCommand,
+        ReprioritizeCoverageCommand,
         "ReprioritizeCoverageCommand",
         target=USER_COMMAND_HERMES_TARGET,
+        fields=(
+            "action: Prioritize | Skip",
+            "missionId: u32",
+            "goals: CoverageGoals",
+            "currentRegionId: UUID",
+            "selectedRegionId: UUID?",
+            "currentSessionId: UUID",
+        ),
+        wire_verified=True,
+        evidence=(
+            "Matic Android 1.151.0 native apply_reprioritize_action, Goal, "
+            "CoverageSpec, and CoverageCommand encoder paths prove exact "
+            "Prioritize/Skip transformations and envelope; motion-capable "
+            "and not live-tested"
+        ),
     ),
     _spec(
         "coverage.stain_mode",
@@ -787,6 +1441,18 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CoverageCommand,
         "StainModeCoverageCommand",
         target=USER_COMMAND_HERMES_TARGET,
+        fields=(
+            "missionId: u32",
+            "stainMode: DryStain | WetSpill",
+            "circles: list<DrawnCircle>",
+        ),
+        wire_verified=True,
+        evidence=(
+            "Matic Android 1.151.0 native stain goal construction, DrawnArea, "
+            "PointCircle, CoverageSpec, Goal, and CoverageCommand encoder "
+            "paths prove the exact goal plan and envelope; motion-capable "
+            "and not live-tested"
+        ),
     ),
     _spec(
         "cleaning.manual",
@@ -1139,9 +1805,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         SettingsCommand,
         "JukeboxState",
         unsafe=True,
-        fields=(
-            "track: Option<OhHanukkah | DeckTheHalls | JingleBells>",
-        ),
+        fields=("track: Option<OhHanukkah | DeckTheHalls | JingleBells>",),
         target="jukebox_command",
     ),
     _spec(
@@ -1470,6 +2134,16 @@ COMMAND_REGISTRY = CommandRegistry(
         ),
         "user.trace_calibration": _VerifiedTraceCalibrationCodec(),
         "user.joystick": _VerifiedJoystickCodec(),
+        "navigation.navigate": _VerifiedNavigationCodec(NavigationMode.NAVIGATE),
+        "navigation.navigate_and_wait": _VerifiedNavigationCodec(
+            NavigationMode.NAVIGATE_AND_WAIT
+        ),
+        "navigation.navigate_and_explore": _VerifiedNavigationCodec(
+            NavigationMode.NAVIGATE_AND_EXPLORE
+        ),
+        "coverage.normal": _VerifiedNormalCoverageCodec(),
+        "coverage.reprioritize": _VerifiedReprioritizeCoverageCodec(),
+        "coverage.stain_mode": _VerifiedStainCoverageCodec(),
         "cleaning.manual": _VerifiedManualCleanCodec(),
         "map.clear_rgb_weights": _VerifiedEmptyMapCodec(
             MapEnvironmentAction.CLEAR_RGB_WEIGHTS,

@@ -36,12 +36,14 @@ def test_collection_inventory_is_exposed() -> None:
 def test_control_status_is_explicitly_fail_closed() -> None:
     result = runner.invoke(app, ["control", "status"])
     assert result.exit_code == 0
-    assert '"wire_verified_commands": 24' in result.stdout
-    assert '"registered_codecs": 23' in result.stdout
+    assert '"wire_verified_commands": 30' in result.stdout
+    assert '"registered_codecs": 29' in result.stdout
     assert '"live_delivery_verified_commands": 6' in result.stdout
     assert '"stationary_stop_enabled": true' in result.stdout
-    assert '"motion_codecs_available": 9' in result.stdout
-    assert '"direct_teleop_enabled": false' in result.stdout
+    assert '"motion_codecs_available": 15' in result.stdout
+    assert '"watchdog_teleop_enabled": true' in result.stdout
+    assert '"direct_joystick_execute_enabled": false' in result.stdout
+    assert '"remaining_fail_closed_commands": 36' in result.stdout
 
 
 def test_control_inventory_is_complete() -> None:
