@@ -43,18 +43,21 @@ only. All 65 documented protocol-25 commands have registered codecs.
 
 ## Quick start
 
-You need Python 3.11 or newer, [`uv`](https://docs.astral.sh/uv/), and a robot
-reachable from the same local network. Bluetooth enrollment currently requires
-Linux with BlueZ; Bluetooth is not needed after enrollment.
+You need Python 3.11 or newer and a robot reachable from the same local network.
+Bluetooth enrollment currently requires Linux with BlueZ; Bluetooth is not
+needed after enrollment.
 
 ```bash
-git clone https://github.com/Burgess-Software/unofficial-matic-sdk.git
-cd unofficial-matic-sdk
-uv sync --all-extras --group dev
-uv run matic --help
+python -m pip install --pre "unofficial-matic-sdk[all]"
+matic --help
 ```
 
-No package is currently published, and no license is granted at this stage.
+With [`uv`](https://docs.astral.sh/uv/), use
+`uv tool install --python 3.13 --prerelease allow "unofficial-matic-sdk[all]"`
+for the CLI, or `uv add --prerelease allow "unofficial-matic-sdk[all]"` inside
+a Python project.
+
+No license is granted at this stage.
 
 ### Pair once over Bluetooth
 
@@ -610,6 +613,7 @@ commands safely and understanding their effects.
 ## Development
 
 ```bash
+uv sync --all-extras --group dev
 uv run ruff check .
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p pytest_asyncio.plugin
 uv run python -m build
