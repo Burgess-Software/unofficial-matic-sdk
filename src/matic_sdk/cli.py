@@ -327,9 +327,9 @@ def main(
 
 @app.command()
 def enroll(
-    device: Annotated[
+    device_alias: Annotated[
         str,
-        typer.Option("--device", help="Local alias used for this robot."),
+        typer.Option("--device-alias", help="Local credential alias for this robot."),
     ],
     address: Annotated[
         str | None,
@@ -355,7 +355,7 @@ def enroll(
     """Pair over Linux Bluetooth and save a new BotToken privately."""
 
     try:
-        store = CredentialStore(device, root=credential_root)
+        store = CredentialStore(device_alias, root=credential_root)
         result = _run(
             enroll_device(
                 store,
@@ -368,13 +368,16 @@ def enroll(
     except Exception as error:
         _abort(error)
     typer.echo(
-        f"Enrolled {result.device_id!r}; credentials saved at {result.token_path}"
+        f"Enrolled {result.device_alias!r}; credentials saved at {result.token_path}"
     )
 
 
 @credential_app.command("import-token")
 def import_token(
-    device: Annotated[str, typer.Option(help="Local alias used for this robot.")],
+    device_alias: Annotated[
+        str,
+        typer.Option("--device-alias", help="Local credential alias for this robot."),
+    ],
     source: Annotated[
         Path,
         typer.Option(help="Existing owner-only serialized BotToken file."),
@@ -387,22 +390,27 @@ def import_token(
     """Import an existing mode-0600 BotToken without printing its contents."""
 
     try:
-        store = CredentialStore(device, root=credential_root)
+        store = CredentialStore(device_alias, root=credential_root)
         store.import_token(source)
     except Exception as error:
         _abort(error)
-    typer.echo(f"Imported credentials for {device!r} into {store.paths.directory}")
+    typer.echo(
+        f"Imported credentials for {device_alias!r} into {store.paths.directory}"
+    )
 
 
 @credential_app.command("status")
 def credential_status(
-    device: Annotated[str, typer.Option(help="Local alias used for this robot.")],
+    device_alias: Annotated[
+        str,
+        typer.Option("--device-alias", help="Local credential alias for this robot."),
+    ],
     credential_root: Annotated[Path | None, typer.Option()] = None,
 ) -> None:
     """Show whether an alias is enrolled without reading or printing its secret."""
 
     try:
-        store = CredentialStore(device, root=credential_root)
+        store = CredentialStore(device_alias, root=credential_root)
         enrolled = store.enrolled
         if enrolled:
             store.load_token()
@@ -411,7 +419,7 @@ def credential_status(
     typer.echo(
         json.dumps(
             {
-                "device": device,
+                "device_alias": device_alias,
                 "enrolled": enrolled,
                 "directory": str(store.paths.directory),
             },
@@ -509,12 +517,12 @@ def probe(
 
 
 async def _connect(
-    device: str,
+    device_alias: str,
     config: MaticConfig,
     credential_root: Path | None,
 ) -> MaticClient:
     return await MaticClient.connect_from_store(
-        device,
+        device_alias,
         config,
         credential_root=str(credential_root) if credential_root else None,
     )
@@ -522,7 +530,14 @@ async def _connect(
 
 @app.command()
 def status(
-    device: Annotated[str, typer.Option(envvar="MATIC_DEVICE")],
+    device_alias: Annotated[
+        str,
+        typer.Option(
+            "--device-alias",
+            envvar="MATIC_DEVICE_ALIAS",
+            help="Local credential alias for this robot.",
+        ),
+    ],
     host: Annotated[str, typer.Option(envvar="MATIC_HOST")],
     port: Annotated[
         int,
@@ -552,7 +567,7 @@ def status(
             ca_file=ca_file,
             insecure_read_only=False,
         )
-        async with await _connect(device, config, credential_root) as robot:
+        async with await _connect(device_alias, config, credential_root) as robot:
             return await robot.bot_info()
 
     try:
@@ -575,7 +590,14 @@ def list_collections() -> None:
 @collection_app.command()
 def stream(
     target: Annotated[str, typer.Argument(help="Verified Hermes collection target.")],
-    device: Annotated[str, typer.Option(envvar="MATIC_DEVICE")],
+    device_alias: Annotated[
+        str,
+        typer.Option(
+            "--device-alias",
+            envvar="MATIC_DEVICE_ALIAS",
+            help="Local credential alias for this robot.",
+        ),
+    ],
     host: Annotated[str, typer.Option(envvar="MATIC_HOST")],
     count: Annotated[int, typer.Option(min=1)] = 10,
     duration: Annotated[float, typer.Option(min=0.1)] = 10.0,
@@ -630,7 +652,7 @@ def stream(
             ca_file=ca_file,
             insecure_read_only=False,
         )
-        async with await _connect(device, config, credential_root) as robot:
+        async with await _connect(device_alias, config, credential_root) as robot:
             async with await robot.collections.subscribe(target) as events:
                 deadline = asyncio.get_running_loop().time() + duration
                 for _ in range(count):
@@ -660,7 +682,14 @@ def stream(
 @collection_app.command()
 def record(
     output: Annotated[Path, typer.Argument(help="New owner-only output directory.")],
-    device: Annotated[str, typer.Option(envvar="MATIC_DEVICE")],
+    device_alias: Annotated[
+        str,
+        typer.Option(
+            "--device-alias",
+            envvar="MATIC_DEVICE_ALIAS",
+            help="Local credential alias for this robot.",
+        ),
+    ],
     host: Annotated[str, typer.Option(envvar="MATIC_HOST")],
     target: Annotated[
         list[str] | None,
@@ -698,7 +727,7 @@ def record(
             ca_file=ca_file,
             insecure_read_only=False,
         )
-        async with await _connect(device, config, credential_root) as robot:
+        async with await _connect(device_alias, config, credential_root) as robot:
             return await record_telemetry(
                 robot,
                 output,

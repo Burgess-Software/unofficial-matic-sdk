@@ -18,7 +18,7 @@ from matic_sdk.protocol.wire import (
     parse_fields,
 )
 
-_DEVICE_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+_DEVICE_ALIAS_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 _PRIVATE_FILE_MODE = stat.S_IRUSR | stat.S_IWUSR
 _PRIVATE_DIR_MODE = stat.S_IRWXU
 
@@ -106,12 +106,12 @@ class CredentialPaths:
     client_id: Path
 
 
-def _validate_device_id(device_id: str) -> str:
-    if not _DEVICE_ID_RE.fullmatch(device_id):
+def _validate_device_alias(device_alias: str) -> str:
+    if not _DEVICE_ALIAS_RE.fullmatch(device_alias):
         raise ValueError(
-            "device_id must contain only letters, digits, dot, underscore, and dash"
+            "device_alias must contain only letters, digits, dot, underscore, and dash"
         )
-    return device_id
+    return device_alias
 
 
 def _assert_private_directory(path: Path) -> None:
@@ -170,12 +170,12 @@ def _write_new_private(path: Path, data: bytes) -> None:
 
 
 class CredentialStore:
-    """Per-device credential storage below the XDG data directory."""
+    """Per-alias credential storage below the XDG data directory."""
 
-    def __init__(self, device_id: str, *, root: Path | None = None) -> None:
-        self.device_id = _validate_device_id(device_id)
+    def __init__(self, device_alias: str, *, root: Path | None = None) -> None:
+        self.device_alias = _validate_device_alias(device_alias)
         self.root = (root or default_data_root()).expanduser()
-        directory = self.root / "devices" / self.device_id
+        directory = self.root / "devices" / self.device_alias
         self.paths = CredentialPaths(
             directory=directory,
             token=directory / "bot-token.pb",
@@ -212,7 +212,9 @@ class CredentialStore:
 
     def load_token(self) -> BotToken:
         if not self.paths.token.exists():
-            raise CredentialError(f"no enrolled BotToken for device {self.device_id!r}")
+            raise CredentialError(
+                f"no enrolled BotToken for alias {self.device_alias!r}"
+            )
         _assert_private_file(self.paths.token)
         try:
             return BotToken.decode(self.paths.token.read_bytes())

@@ -66,5 +66,9 @@ def test_public_readme_uses_installed_cli_and_keeps_both_map_images() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
 
     assert "uv run matic" not in readme
+    assert "--device living-room" not in readme
+    assert "MATIC_DEVICE=" not in readme
+    assert "--device-alias my-matic" in readme
+    assert "MATIC_DEVICE_ALIAS=my-matic" in readme
     assert "58efbb9e-4180-4c8d-b38f-ff300f1c86b7" in readme
     assert "df910ffe-de7b-4bc0-bf21-1c3847c25a78" in readme

@@ -15,7 +15,7 @@ async def main() -> None:
         tls=TlsConfig.pinned(os.environ["MATIC_CERT_SHA256"]),
     )
     async with await MaticClient.connect_from_store(
-        os.environ["MATIC_DEVICE"],
+        os.environ["MATIC_DEVICE_ALIAS"],
         config,
     ) as robot:
         await robot.commands.joystick(linear_mps=0.05, angular_rad_s=0.0)

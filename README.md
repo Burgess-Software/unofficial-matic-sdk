@@ -74,11 +74,11 @@ pairing mode, and keep the computer's Bluetooth adapter close to the robot.
 Then run:
 
 ```bash
-matic enroll --device living-room
+matic enroll --device-alias my-matic
 ```
 
 Complete the BlueZ passkey prompt with the six-digit code displayed by Matic.
-`living-room` is only a local alias. The SDK creates its own client UUID and
+`my-matic` is only a local alias. The SDK creates its own client UUID and
 saves the returned token in an owner-only credential directory without
 overwriting an existing enrollment.
 
@@ -86,7 +86,7 @@ If you already have an owner-only serialized token:
 
 ```bash
 matic credentials import-token \
-  --device living-room \
+  --device-alias my-matic \
   --source /secure/path/to/bot-token.pb
 ```
 
@@ -96,7 +96,7 @@ Find the robot's IP address or hostname in your router's DHCP/client list. The
 SDK intentionally does not sweep the LAN.
 
 ```bash
-export MATIC_DEVICE=living-room
+export MATIC_DEVICE_ALIAS=my-matic
 export MATIC_HOST=ROBOT_IP_OR_HOSTNAME
 ```
 
@@ -263,7 +263,7 @@ async def main() -> None:
         tls=TlsConfig.pinned(os.environ["MATIC_CERT_SHA256"]),
     )
     async with await MaticClient.connect_from_store(
-        os.environ["MATIC_DEVICE"], config
+        os.environ["MATIC_DEVICE_ALIAS"], config
     ) as robot:
         event = await robot.first("latest_pose")
         pose = event.decode()
@@ -307,7 +307,7 @@ async def main() -> None:
         tls=TlsConfig.pinned(os.environ["MATIC_CERT_SHA256"]),
     )
     async with await MaticClient.connect_from_store(
-        os.environ["MATIC_DEVICE"], config
+        os.environ["MATIC_DEVICE_ALIAS"], config
     ) as robot:
         receipt = await robot.commands.dock()
         print(receipt.transport.status.value)

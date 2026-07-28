@@ -57,7 +57,7 @@ def test_credential_store_rejects_public_token_file(tmp_path) -> None:
         store.load_token()
 
 
-def test_credential_device_id_cannot_escape_store(tmp_path) -> None:
+def test_credential_device_alias_cannot_escape_store(tmp_path) -> None:
     with pytest.raises(ValueError):
         CredentialStore("../escape", root=tmp_path)
 

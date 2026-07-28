@@ -15,7 +15,7 @@ async def main() -> None:
         tls=TlsConfig.pinned(os.environ["MATIC_CERT_SHA256"]),
     )
     async with await MaticClient.connect_from_store(
-        os.environ["MATIC_DEVICE"], config
+        os.environ["MATIC_DEVICE_ALIAS"], config
     ) as robot:
         async with await robot.collections.subscribe("latest_pose") as events:
             async for event in events:

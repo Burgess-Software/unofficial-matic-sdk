@@ -42,7 +42,7 @@ class BleCandidate:
 
 @dataclass(frozen=True, slots=True)
 class EnrollmentResult:
-    device_id: str
+    device_alias: str
     client_id: str
     token_user_id: str | None
     token_bytes: int
@@ -195,7 +195,7 @@ async def enroll(
 
     if store.enrolled:
         raise CredentialError(
-            f"device {store.device_id!r} is already enrolled; refusing to overwrite"
+            f"alias {store.device_alias!r} is already enrolled; refusing to overwrite"
         )
     chosen = candidate
     if chosen is None:
@@ -211,7 +211,7 @@ async def enroll(
     )
     store.save_token(token.serialized)
     return EnrollmentResult(
-        device_id=store.device_id,
+        device_alias=store.device_alias,
         client_id=client_id,
         token_user_id=token.user_id,
         token_bytes=len(token.serialized),

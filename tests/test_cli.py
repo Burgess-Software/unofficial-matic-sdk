@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 import uuid
 from datetime import UTC, datetime
@@ -18,6 +19,7 @@ from matic_sdk.protocol.commands import COMMAND_REGISTRY
 from matic_sdk.protocol.wire import encode_bytes_field
 
 runner = CliRunner()
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
 def test_version() -> None:
@@ -25,6 +27,29 @@ def test_version() -> None:
     assert result.exit_code == 0
     assert result.stdout.strip() == __version__
     assert package_version("unofficial-matic-sdk") == __version__
+
+
+def test_credential_alias_uses_explicit_device_alias_option() -> None:
+    for command in (
+        ["enroll"],
+        ["credentials", "import-token"],
+        ["credentials", "status"],
+        ["status"],
+        ["collections", "stream"],
+        ["collections", "record"],
+    ):
+        help_result = runner.invoke(
+            app,
+            [*command, "--help"],
+            color=False,
+            terminal_width=160,
+        )
+        assert help_result.exit_code == 0
+        assert "--device-alias" in _ANSI_ESCAPE.sub("", help_result.stdout)
+
+    legacy = runner.invoke(app, ["enroll", "--device", "my-matic"])
+    assert legacy.exit_code != 0
+    assert "No such option" in legacy.output
 
 
 def test_terminal_output_escapes_control_characters() -> None:
@@ -212,7 +237,7 @@ def test_unknown_collection_is_rejected_before_network_io() -> None:
             "collections",
             "stream",
             "not-a-target",
-            "--device",
+            "--device-alias",
             "test",
             "--host",
             "robot.invalid",
@@ -238,7 +263,7 @@ def test_existing_token_import_never_prints_secret(tmp_path) -> None:
         [
             "credentials",
             "import-token",
-            "--device",
+            "--device-alias",
             "test-device",
             "--source",
             str(source),

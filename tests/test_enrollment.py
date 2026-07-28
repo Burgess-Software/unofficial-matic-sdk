@@ -172,7 +172,7 @@ async def test_enroll_persists_result_without_printing_secret(
 
     result = await enroll(store, candidate=candidate)
 
-    assert result.device_id == "test-device"
+    assert result.device_alias == "test-device"
     assert store.load_token().user_id == result.client_id
     assert "synthetic-secret" not in repr(result)
 
