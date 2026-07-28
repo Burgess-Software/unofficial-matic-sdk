@@ -32,22 +32,22 @@ mode.
 4. Increase the scan window:
 
    ```bash
-   matic enroll --device living-room --scan-timeout 30
+   matic enroll --device-alias my-matic --scan-timeout 30
    ```
 
 If several robots are nearby, use the exact advertised name or address shown
 during your own Bluetooth inspection:
 
 ```bash
-matic enroll --device living-room --name matic-EXACT-NAME
-matic enroll --device living-room --address BLUETOOTH_ADDRESS
+matic enroll --device-alias my-matic --name matic-EXACT-NAME
+matic enroll --device-alias my-matic --address BLUETOOTH_ADDRESS
 ```
 
 Enrollment refuses to overwrite an existing alias. Check the selected store
 without printing its token:
 
 ```bash
-matic credentials status --device living-room
+matic credentials status --device-alias my-matic
 ```
 
 ## Finding `MATIC_HOST`
@@ -85,7 +85,7 @@ second trusted machine or trusted network path. Then pin the exact value:
 
 ```bash
 export MATIC_CERT_SHA256=VERIFIED_64_CHARACTER_SHA256
-matic status --device living-room --host "$MATIC_HOST"
+matic status --device-alias my-matic --host "$MATIC_HOST"
 ```
 
 If the certificate later changes, do not replace the pin until you have
@@ -98,7 +98,7 @@ Reads do not need a command protocol selection. After authenticating, decode
 one retained version event:
 
 ```bash
-export MATIC_DEVICE=living-room
+export MATIC_DEVICE_ALIAS=my-matic
 matic collections stream current_version \
   --count 1 \
   --duration 10 \

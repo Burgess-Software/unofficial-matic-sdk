@@ -47,7 +47,7 @@ async def main() -> None:
         vacuum_setting=ScheduleCoverageSetting.STANDARD,
     )
     async with await MaticClient.connect_from_store(
-        os.environ["MATIC_DEVICE"],
+        os.environ["MATIC_DEVICE_ALIAS"],
         config,
     ) as robot:
         receipt = await robot.commands.add_or_modify_schedule(

@@ -4,7 +4,7 @@ These recipes assume one completed Bluetooth enrollment and these environment
 values:
 
 ```bash
-export MATIC_DEVICE=living-room
+export MATIC_DEVICE_ALIAS=my-matic
 export MATIC_HOST=ROBOT_IP_OR_HOSTNAME
 export MATIC_CERT_SHA256=VERIFIED_64_CHARACTER_SHA256
 export MATIC_PROTOCOL_VERSION=25
@@ -30,7 +30,7 @@ async def main() -> None:
         tls=TlsConfig.pinned(os.environ["MATIC_CERT_SHA256"]),
     )
     async with await MaticClient.connect_from_store(
-        os.environ["MATIC_DEVICE"], config
+        os.environ["MATIC_DEVICE_ALIAS"], config
     ) as robot:
         event = await robot.first("kabuki_state")
         state = event.decode()

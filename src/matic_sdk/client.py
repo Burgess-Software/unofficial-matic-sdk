@@ -103,7 +103,7 @@ class MaticClient:
     @classmethod
     async def connect_from_store(
         cls,
-        device_id: str,
+        device_alias: str,
         config: MaticConfig,
         *,
         credential_root: str | None = None,
@@ -117,7 +117,7 @@ class MaticClient:
         )
         return await cls.connect(
             config,
-            credentials=CredentialStore(device_id, root=root),
+            credentials=CredentialStore(device_alias, root=root),
         )
 
     async def handshake(self) -> None:
