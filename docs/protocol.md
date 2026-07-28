@@ -39,18 +39,23 @@ collection streams can share the HTTP/2 connection.
 
 ## Compatibility
 
-Read decoders preserve unknown fields. Writes are stricter: the command
-registry accepts only the explicitly supported protocol version. Unknown
-command encodings or robot versions fail before network I/O.
-`MaticConfig.command_protocol_version` has no default: a future caller must
-provide a version observed from that robot before even a complete codec can run.
+Read decoders preserve unknown fields. Unknown command encodings still fail
+before network I/O. The command registry requires an explicitly selected
+positive protocol version, but it does not reject a write solely because that
+number differs from 25. Instead, it emits
+`UnverifiedProtocolVersionWarning` and reuses the verified protocol-25
+protobuf codec. This permits protobuf-compatible firmware to proceed while
+making the unverified compatibility visible to logs and test suites.
+`MaticConfig.command_protocol_version` has no default, so callers still provide
+the version observed from their robot.
 
 The registry documents 65 intents and exact Hermes targets. All 65 inner
 command encodings have been reconstructed completely, retained as synthetic
 golden evidence, and registered as codecs. This includes raw-motor setpoints;
-the SDK adds no device-specific range limits. `wire_verified` codecs can be
-selected only for the observed protocol version. Every enabled codec is
-callable directly; risk labels are informational and add no capability gate.
+the SDK adds no device-specific range limits. `wire_verified` describes the
+protocol-25 evidence baseline. Every enabled codec is callable directly on
+another positive version after the warning; risk labels are informational and
+add no capability gate.
 
 An empty inner protobuf is a valid command body for the commands whose schema
 has no fields. Because protobuf omits default values, `ChannelRequest.value`

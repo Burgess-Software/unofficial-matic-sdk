@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
 from matic_sdk.protocol.wire import (
     ProtoWireError,
@@ -17,6 +18,9 @@ from matic_sdk.protocol.wire import (
     first_integer,
     parse_fields,
 )
+
+if TYPE_CHECKING:
+    from matic_sdk.models.collections import FriendlyCollectionModel
 
 MAP_TARGETS = (
     "map_compressed_rgb",
@@ -166,7 +170,7 @@ class CollectionValue:
 
 @dataclass(frozen=True, slots=True)
 class RawCollectionEvent:
-    """Typed collection envelope with an intentionally raw application value."""
+    """Lossless collection envelope with a registered friendly decoder."""
 
     target: str
     operation: CollectionOperation
@@ -179,6 +183,13 @@ class RawCollectionEvent:
     @property
     def payload(self) -> bytes | None:
         return self.value.payload if self.value else None
+
+    def decode(self) -> FriendlyCollectionModel:
+        """Return this event's registered friendly, lossless model."""
+
+        from matic_sdk.collection_models import decode_collection_event
+
+        return decode_collection_event(self)
 
 
 def _unwrap_fast_bytes(message: bytes) -> bytes | None:

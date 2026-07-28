@@ -149,14 +149,16 @@ from an unknown or guessed payload.
 
 Exact wire evidence is necessary to register an encoder, and it is not live
 delivery evidence. The exact raw-motor encoder is registered with no
-device-specific range limits. Unknown commands and unsupported protocol
-versions fail before opening a mutating stream. Every enabled typed command is
-callable directly; registry risk labels are informational and add no
+device-specific range limits. Unknown commands fail before opening a mutating
+stream. A positive version other than 25 proceeds with the same verified codec
+and an `UnverifiedProtocolVersionWarning`; the warning distinguishes a
+compatibility attempt from proven version support. Every enabled typed command
+is callable directly; registry risk labels are informational and add no
 confirmation or capability gate. Direct joystick calls use the exact encoder
-while retaining the executor's TLS, protocol, codec, audit, and no-retry
-boundaries. Each call sends once; there is no SDK-managed watchdog or automatic
-Stop. A bounded live test on 2026-07-28 produced 25 acknowledged sends with no
-failures and a docked-to-ready state transition.
+while retaining the executor's TLS, explicit protocol selection, codec, audit,
+and no-retry boundaries. Each call sends once; there is no SDK-managed watchdog
+or automatic Stop. A bounded live test on 2026-07-28 produced 25 acknowledged
+sends with no failures and a docked-to-ready state transition.
 
 The SDK implementations of Stop, StayPut, Pause, child lock, pet-waste
 avoidance, and voice were exercised against an owner-authorized robot on

@@ -39,10 +39,11 @@ range limits, and has not been exercised live.
 
 Every recovered command has a `CommandSpec` describing its family, risk,
 available channel evidence, and verification state. Compatibility is currently
-gated globally to protocol 25. A decoded name or UniFFI enum discriminant is
-not accepted as a protobuf field number.
-Unknown commands and unsupported future protocol versions raise an error before
-opening a mutating stream.
+verified against protocol 25. A decoded name or UniFFI enum discriminant is not
+accepted as a protobuf field number. Unknown commands still raise an error
+before opening a mutating stream. A different positive protocol version uses
+the verified protocol-25 codec with an `UnverifiedProtocolVersionWarning`,
+allowing compatible firmware to proceed without claiming it was verified.
 
 ## Verification state
 
