@@ -10,7 +10,7 @@ import threading
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 from uuid import UUID, uuid4
 
 from matic_sdk.models.control import (
@@ -60,7 +60,6 @@ from matic_sdk.protocol.commands import (
     COMMAND_REGISTRY,
     CommandRegistry,
     EncodedCommand,
-    ensure_protocol_compatible,
 )
 
 _REDACTED = "[REDACTED]"
@@ -233,15 +232,16 @@ class CommandExecutor:
             protocol_version=self._protocol_version,
         )
         try:
-            protocol_version = ensure_protocol_compatible(self._protocol_version)
             if not self._tls_identity_verified:
                 raise UnverifiedCommandTransport(
                     "commands require verified robot TLS identity"
                 )
             encoded = self._registry.encode(
                 command,
-                protocol_version=protocol_version,
+                protocol_version=self._protocol_version,
             )
+            # CommandRegistry.encode validated the value before returning.
+            protocol_version = cast(int, self._protocol_version)
             try:
                 acknowledgement = await self._transport.send_channel(encoded)
             except asyncio.CancelledError as error:

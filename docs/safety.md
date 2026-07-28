@@ -13,7 +13,7 @@ descriptive metadata only; they do not block or authorize execution.
 The SDK still requires:
 
 - authenticated TLS with a verified robot identity;
-- an explicitly selected compatible protocol version;
+- an explicitly selected positive protocol version;
 - an exact, registered wire codec for the requested command; and
 - valid values for the command's proven protobuf field types.
 
@@ -22,9 +22,11 @@ inventing unknown wire data. They are protocol and authentication boundaries,
 not operator-safety interlocks.
 
 All 65 currently documented protocol-25 commands have exact codecs. Unknown
-commands and future protocol versions remain unavailable because the SDK will
-not invent wire data. The exact raw-motor codec is registered and direct; the
-SDK applies no device-specific range limits to those setpoints.
+commands remain unavailable because the SDK will not invent wire data. A
+different positive protocol version reuses the protocol-25 codec after emitting
+`UnverifiedProtocolVersionWarning`; that is a compatibility attempt, not new
+wire evidence. The exact raw-motor codec is registered and direct; the SDK
+applies no device-specific range limits to those setpoints.
 
 ## Delivery behavior
 

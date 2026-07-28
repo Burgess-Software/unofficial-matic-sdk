@@ -17,6 +17,7 @@ from matic_sdk.protocol.collections import RawCollectionEvent
 
 if TYPE_CHECKING:
     from matic_sdk.client import MaticClient
+    from matic_sdk.models.collections import FriendlyCollectionModel
 
 
 DEFAULT_CONTROL_FEEDBACK_TARGETS = ("latest_pose", "kabuki_state", "motor_status")
@@ -27,6 +28,18 @@ _PUMP_FINISHED = object()
 class TelemetryUpdate:
     event: RawCollectionEvent
     latest: dict[str, RawCollectionEvent]
+
+    @property
+    def model(self) -> FriendlyCollectionModel:
+        """Decode the event that produced this update."""
+
+        return self.event.decode()
+
+    @property
+    def latest_models(self) -> dict[str, FriendlyCollectionModel]:
+        """Decode the most recent event seen for each subscribed target."""
+
+        return {target: event.decode() for target, event in self.latest.items()}
 
 
 class TelemetrySession(AsyncIterator[TelemetryUpdate]):

@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 from matic_sdk.client import MaticClient
+from matic_sdk.collection_models import (
+    COLLECTION_MODEL_TYPES,
+    decode_collection_event,
+    decode_collection_payload,
+)
 from matic_sdk.commands import CommandExecutor, JsonlAuditLog
 from matic_sdk.config import MaticConfig, SecurityMode, TlsConfig
 from matic_sdk.coverage import (
@@ -10,6 +15,7 @@ from matic_sdk.coverage import (
     ReprioritizationSnapshot,
 )
 from matic_sdk.credentials import BotToken, CredentialStore
+from matic_sdk.models.collections import CollectionModel, FriendlyCollectionModel
 from matic_sdk.models.control import (
     AddZones,
     CleaningFloor,
@@ -60,17 +66,23 @@ from matic_sdk.models.control import (
     Weekday,
 )
 from matic_sdk.protocol.collections import KNOWN_TARGETS, RawCollectionEvent
-from matic_sdk.protocol.commands import COMMAND_REGISTRY, COMMAND_SPECS
+from matic_sdk.protocol.commands import (
+    COMMAND_REGISTRY,
+    COMMAND_SPECS,
+    UnverifiedProtocolVersionWarning,
+)
 
-__version__ = "0.1.0a1"
+__version__ = "0.1.0a2"
 
 __all__ = [
+    "COLLECTION_MODEL_TYPES",
     "COMMAND_REGISTRY",
     "COMMAND_SPECS",
     "KNOWN_TARGETS",
     "AddZones",
     "BotToken",
     "CleaningFloor",
+    "CollectionModel",
     "CommandExecutor",
     "ControlCommand",
     "CoverageAction",
@@ -87,6 +99,7 @@ __all__ = [
     "CredentialStore",
     "CustomScheduleTarget",
     "DrawnCircle",
+    "FriendlyCollectionModel",
     "JoystickCommand",
     "JsonlAuditLog",
     "MapEnvironmentAction",
@@ -123,8 +136,11 @@ __all__ = [
     "StainMode",
     "StandardScheduleTarget",
     "TlsConfig",
+    "UnverifiedProtocolVersionWarning",
     "UserAction",
     "UserCommand",
     "Weekday",
     "__version__",
+    "decode_collection_event",
+    "decode_collection_payload",
 ]

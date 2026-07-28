@@ -59,6 +59,10 @@ async def test_telemetry_stops_after_all_finite_streams_end() -> None:
         "latest_pose",
         "motor_status",
     }
+    assert all(update.model.target == update.event.target for update in updates)
+    assert all(
+        update.latest_models.keys() == update.latest.keys() for update in updates
+    )
     assert all(subscription.closed for subscription in client.subscriptions)
 
 

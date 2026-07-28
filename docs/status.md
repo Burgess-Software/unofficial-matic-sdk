@@ -14,11 +14,13 @@ is still incomplete.
 ## Reads
 
 The Hermes `FetchCollection` RPC, sequence acknowledgements, and 43 named
-collection targets are verified live. Every known target is available through
-the raw event interface. Friendly models are provided only where the wire shape
-can be validated; unknown payloads remain losslessly accessible as bytes.
-Apart from maps, voxels, retained media, and the collection envelope itself,
-most real-time state payloads do not yet have friendly typed decoders.
+collection targets are verified live. Every known target has a registered
+friendly model covering its app-facing pose, mission, activity, device,
+settings, schedule, history, media, or map fields. Each model also retains the
+original payload and parsed protobuf fields, so unknown additions remain
+losslessly accessible. Targets observed only in an empty/default state still
+return their named model, with unavailable optional values set to `None`.
+See the [collection model reference](collections.md).
 
 The highest-value streams are pose, operating state, motor telemetry, active
 mission/session, coverage progress, trajectory, maps, version/update state,

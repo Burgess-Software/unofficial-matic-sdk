@@ -71,6 +71,7 @@ from matic_sdk.protocol.commands import (
     CommandRegistry,
     EncodedCommand,
     UnsupportedProtocolVersion,
+    UnverifiedProtocolVersionWarning,
     _VerifiedNormalCoverageCodec,
     _VerifiedRawMotorCodec,
     _VerifiedReprioritizeCoverageCodec,
@@ -233,11 +234,21 @@ def test_constant_user_payloads_match_official_or_native_fixtures() -> None:
     assert joystick.known_payload is None
 
 
-def test_protocol_gate_runs_before_codec_lookup() -> None:
-    with pytest.raises(UnsupportedProtocolVersion, match="protocol 24"):
-        COMMAND_REGISTRY.encode(
+def test_unverified_protocol_version_warns_and_encodes() -> None:
+    with pytest.warns(UnverifiedProtocolVersionWarning, match="not 24"):
+        encoded = COMMAND_REGISTRY.encode(
             UserCommand(UserAction.STOP),
             protocol_version=24,
+        )
+    assert encoded == EncodedCommand(bytes.fromhex("7a040a022200"), "user_command")
+
+
+@pytest.mark.parametrize("version", (None, 0, -1, True, "25"))
+def test_invalid_protocol_version_is_rejected(version: object) -> None:
+    with pytest.raises(UnsupportedProtocolVersion):
+        COMMAND_REGISTRY.encode(
+            UserCommand(UserAction.STOP),
+            protocol_version=version,
         )
 
 
@@ -1734,7 +1745,7 @@ async def test_jsonl_audit_is_mode_0600_and_contains_no_command_secrets(
         payload=b"protobuf bytes",
     )
 
-    transport = NeverCalledTransport()
+    transport = AcknowledgingTransport()
     executor = CommandExecutor(
         transport,
         protocol_version=24,
@@ -1746,9 +1757,13 @@ async def test_jsonl_audit_is_mode_0600_and_contains_no_command_secrets(
         ssid="household-network",
         passphrase="network-password",
     )
-    with pytest.raises(UnsupportedProtocolVersion):
-        await executor.execute(command)
+    with pytest.warns(
+        UnverifiedProtocolVersionWarning,
+        match="not 24",
+    ) as version_warnings:
+        receipt = await executor.execute(command)
 
+    assert len(version_warnings) == 1
     assert stat.S_IMODE(audit_path.stat().st_mode) == 0o600
     contents = audit_path.read_text(encoding="utf-8")
     assert "bot-token-value" not in contents
@@ -1758,4 +1773,5 @@ async def test_jsonl_audit_is_mode_0600_and_contains_no_command_secrets(
     records = [json.loads(line) for line in contents.splitlines()]
     assert records[0]["nested"]["safe"] == "kept"
     assert records[0]["nested"]["ssid"] == "[REDACTED]"
-    assert records[-1]["error_type"] == "UnsupportedProtocolVersion"
+    assert records[-1]["event"] == "command.complete"
+    assert receipt.transport_acknowledged

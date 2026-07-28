@@ -1,18 +1,20 @@
-"""Fail-closed command codec registry for Hermes protocol version 25.
+"""Evidence-backed command codec registry for Hermes protocol version 25.
 
 Static analysis recovered command type names, and offline execution of the
 official native serializers established exact payloads for all 65 documented
 protocol-25 intents. Independent protocol reconstruction, official-client
 evidence, and live testing established the surrounding ``ChannelRequest`` wire
 shape and response semantics. The default registry exposes only commands whose
-target and complete payload are proven; callers never get a guessing or
-raw-payload escape hatch.
+target and complete payload are proven. Protocol versions other than the
+observed version 25 are allowed with a warning so callers can test compatible
+firmware without silently treating that compatibility as verified.
 """
 
 from __future__ import annotations
 
 import math
 import struct
+import warnings
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -118,14 +120,18 @@ class CommandProtocolError(RuntimeError):
 
 
 class UnsupportedProtocolVersion(CommandProtocolError):
-    """Raised before encoding when the robot protocol is not allowlisted."""
+    """Raised when a protocol version is missing or is not a positive integer."""
 
     def __init__(self, version: object) -> None:
         super().__init__(
-            f"robot protocol {version!r} is not supported for commands; "
-            f"supported versions: {sorted(SUPPORTED_PROTOCOL_VERSIONS)}"
+            f"robot protocol {version!r} is invalid for commands; "
+            "select a positive integer protocol version"
         )
         self.version = version
+
+
+class UnverifiedProtocolVersionWarning(RuntimeWarning):
+    """A command codec is being reused on an unverified protocol version."""
 
 
 class UnknownCommand(CommandProtocolError):
@@ -191,14 +197,23 @@ class CommandCodec(Protocol):
 
 
 def ensure_protocol_compatible(protocol_version: object) -> int:
-    """Accept only the robot protocol version used to derive this surface."""
+    """Validate the selected version and warn outside the evidence baseline."""
 
     if (
         isinstance(protocol_version, bool)
         or not isinstance(protocol_version, int)
-        or protocol_version not in SUPPORTED_PROTOCOL_VERSIONS
+        or protocol_version < 1
     ):
         raise UnsupportedProtocolVersion(protocol_version)
+    if protocol_version not in SUPPORTED_PROTOCOL_VERSIONS:
+        warnings.warn(
+            f"command codecs were verified for robot protocol "
+            f"{DEFAULT_PROTOCOL_VERSION}, not {protocol_version}; sending with "
+            "the protocol-25 wire format because protobuf-compatible firmware "
+            "may still accept it",
+            UnverifiedProtocolVersionWarning,
+            stacklevel=2,
+        )
     return protocol_version
 
 
@@ -3550,7 +3565,7 @@ def encode_command(
     *,
     protocol_version: object,
 ) -> EncodedCommand:
-    """Encode through the fail-closed default registry."""
+    """Encode through the evidence-backed default registry."""
 
     return COMMAND_REGISTRY.encode(command, protocol_version=protocol_version)
 
@@ -3570,6 +3585,7 @@ __all__ = [
     "UnknownCommand",
     "UnsupportedCommandCodec",
     "UnsupportedProtocolVersion",
+    "UnverifiedProtocolVersionWarning",
     "encode_command",
     "ensure_protocol_compatible",
 ]

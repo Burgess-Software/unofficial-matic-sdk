@@ -4,10 +4,9 @@ An async Python SDK and CLI for connecting directly to a Matic robot you own.
 Pair once over Bluetooth, then use the robot's authenticated local-network
 service without a cloud relay.
 
-> [!WARNING]
-> This project is unofficial, unaffiliated with Matic Robots, and based on
-> independent protocol research. It is alpha software for hardware you own.
-> Commands can move the robot or change persistent settings.
+> **Warning:** This project is unofficial, unaffiliated with Matic Robots, and
+> based on independent protocol research. It is alpha software for hardware you
+> own. Commands can move the robot or change persistent settings.
 
 ## What you can do
 
@@ -19,8 +18,14 @@ service without a cloud relay.
   device state, settings, schedules, history, media, and maps.
 - Assemble captured RGB, integrated, coverage, and semantic map tiles into
   correctly oriented PNG mosaics.
+
+  <img width="1024" height="928" alt="Decoded Matic map mosaic" src="https://github.com/user-attachments/assets/58efbb9e-4180-4c8d-b38f-ff300f1c86b7" />
+
 - Export Matic's actual `32 x 32 x 24` sparse colored surface representation as
   a standard PLY point cloud.
+
+  <img width="2416" height="1338" alt="Matic sparse voxel surface" src="https://github.com/user-attachments/assets/df910ffe-de7b-4bc0-bf21-1c3847c25a78" />
+
 - Recover retained WebP thumbnails and images embedded in captured collection
   responses.
 - Stop, pause, tell the robot to stay put, or send it back to charge using
@@ -124,6 +129,10 @@ Stream event metadata without printing the raw latest-pose payload:
 uv run matic collections stream latest_pose --count 20 --duration 30
 ```
 
+Every known target decodes to a named, immutable model. The raw payload and
+parsed protobuf fields remain attached so an unrecognized field from newer
+firmware is not discarded. The Python example below shows `event.decode()`.
+
 Record raw responses from several targets into a new private directory:
 
 ```bash
@@ -199,6 +208,7 @@ not start a recording or provide a live optical-camera stream.
 import asyncio
 
 from matic_sdk import MaticClient, MaticConfig, TlsConfig
+from matic_sdk.models.collections import PoseCollectionModel
 
 
 async def watch_pose() -> None:
@@ -211,15 +221,18 @@ async def watch_pose() -> None:
     ) as robot:
         async with await robot.collections.subscribe("latest_pose") as events:
             async for event in events:
-                print(event.operation.value, len(event.payload or b""))
+                model = event.decode()
+                if isinstance(model, PoseCollectionModel):
+                    print(model.mission_id, model.pose, model.observed_at)
 
 
 asyncio.run(watch_pose())
 ```
 
-Collection envelopes are typed and automatically acknowledged. Most
-application payloads are intentionally exposed as raw bytes until their exact
-schema has been proven.
+Collection envelopes are typed and automatically acknowledged. All 43 known
+targets have friendly models, while `raw_payload` and parsed `fields` keep the
+decoder lossless across firmware additions. See the
+[collection model reference](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/collections.md).
 
 ## Control the robot
 
@@ -348,8 +361,8 @@ operation you intend to run; the calls are shown together only as an API
 reference. `x_meters`, `y_meters`, and `yaw_radians` all use the same canonical
 mission frame; a zero yaw points along positive X. The numeric mission, region,
 and partition values below are placeholders, not coordinates for your robot.
-The SDK does not yet provide a friendly decoder for `latest_pose`, so this is
-an advanced API reference rather than a turnkey navigation example.
+Subscribe to `latest_pose` to obtain the robot's current mission ID and
+mission-relative coordinates before constructing a destination.
 
 ```python
 import asyncio
@@ -587,10 +600,13 @@ commands safely and understanding their effects.
 
 ## Current limits
 
-- Command writes currently require an explicitly selected protocol version 25.
+- Command writes require an explicitly selected positive protocol version.
+  Version 25 is verified; other versions use the protocol-25 protobuf codec and
+  emit an `UnverifiedProtocolVersionWarning` instead of blocking the write.
 - Bluetooth enrollment currently requires Linux and BlueZ.
-- Most collection payloads have a safe raw-byte interface but not yet a
-  friendly high-level model.
+- All 43 known collection targets have friendly models. A few variants were
+  observed only in their empty or default state, so their optional values
+  remain `None` until the robot emits that variant; raw fields are preserved.
 - Maps and voxels are decoded from captures; this is not a live map dashboard.
 - Each joystick call sends exactly one command; the SDK does not provide a
   background resend loop, dead-man lease, automatic zero, or automatic Stop.
@@ -606,6 +622,7 @@ commands safely and understanding their effects.
 - [Command verification ledger](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/command-verification.md)
 - [Control behavior and caller responsibility](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/safety.md)
 - [Protocol notes](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/protocol.md)
+- [Collection model reference](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/collections.md)
 - [Research method](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/research-method.md)
 - [SDK status](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/status.md)
 - [Experimental remote transport](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/remote.md)
