@@ -46,10 +46,10 @@ Neither path retried an unknown outcome. Hermes acknowledged all six requests.
 The robot remained docked and the settings retained their prior values, so
 these checks verify delivery but do not claim an unobservable transition.
 
-On 2026-07-28, a watchdog-backed joystick test first sent a short 0.05 m/s
-sequence while docked, then sent 0.10 m/s for two seconds with input-lease
-refreshes. The longer sequence produced 25 acknowledged velocity/zero/Stop
-sends with no failures, and operating state changed from docked to ready.
+On 2026-07-28, a bounded joystick test first sent a short 0.05 m/s sequence
+while docked, then sent 0.10 m/s for two seconds with repeated velocity
+commands. The longer sequence produced 25 acknowledged velocity/zero/Stop sends
+with no failures, and operating state changed from docked to ready.
 
 The same day, a bounded navigation run exposed and corrected a yaw-frame
 conversion error. A second command returned to the starting pose and finished
@@ -65,10 +65,11 @@ returned the robot to charging.
 
 The other 20 exact formats have offline wire evidence only. No raw-actuation,
 destructive, network-changing, update, reboot, or shutdown command was
-live-tested. Raw-motor encoding is not registered at all. Risk capabilities
-control whether an informed caller may send an enabled exact codec; they do not
-upgrade its evidence level. Joystick control is enabled only through
-`MaticClient.teleop()`; direct executor use remains blocked.
+live-tested. Raw-motor encoding is not registered at all. `UnsafeControls`
+gates enabled hazardous codecs; motion commands have no capability gate.
+Neither changes an encoder's evidence level. Direct joystick control is
+available through `robot.commands.joystick()`, with one send per call and no
+SDK-managed watchdog, automatic zero, or automatic Stop.
 
 ## Firmware boundary
 

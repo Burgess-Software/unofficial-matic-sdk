@@ -91,8 +91,7 @@ def test_control_status_is_explicitly_fail_closed() -> None:
     assert '"live_delivery_verified_commands": 10' in result.stdout
     assert '"stationary_stop_enabled": true' in result.stdout
     assert '"motion_codecs_available": 15' in result.stdout
-    assert '"watchdog_teleop_enabled": true' in result.stdout
-    assert '"direct_joystick_execute_enabled": false' in result.stdout
+    assert '"direct_joystick_enabled": true' in result.stdout
     assert '"remaining_fail_closed_commands": 36' in result.stdout
 
 

@@ -100,12 +100,7 @@ class UserCommand(ControlCommand):
 
 @dataclass(frozen=True, slots=True)
 class JoystickCommand(ControlCommand):
-    """Robot-relative velocity intent.
-
-    The exact protobuf fields and containing command envelope are known, but
-    direct execution remains blocked. Use :class:`matic_sdk.safety.TeleopSession`
-    so a future live-control path cannot bypass its dead-man watchdog.
-    """
+    """One robot-relative linear and angular velocity command."""
 
     linear_mps: float
     angular_rad_s: float

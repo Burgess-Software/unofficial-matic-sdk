@@ -16,7 +16,6 @@ from matic_sdk.client import MaticClient
 from matic_sdk.commands import (
     CommandExecutor,
     CommandOutcomeUnknown,
-    DirectJoystickUnsupported,
     JsonlAuditLog,
     UnverifiedCommandTransport,
 )
@@ -88,10 +87,7 @@ from matic_sdk.protocol.wire import (
     parse_fields,
 )
 from matic_sdk.safety import (
-    MOTION_CONFIRMATION,
     UNSAFE_CONFIRMATION,
-    MotionControlRequired,
-    MotionControls,
     UnsafeControlRequired,
     UnsafeControls,
 )
@@ -1526,7 +1522,7 @@ async def test_unsafe_command_needs_explicit_capability() -> None:
 
 
 @pytest.mark.asyncio
-async def test_motion_command_needs_explicit_capability() -> None:
+async def test_motion_command_sends_without_a_capability() -> None:
     transport = AcknowledgingTransport()
     executor = CommandExecutor(
         transport,
@@ -1535,11 +1531,8 @@ async def test_motion_command_needs_explicit_capability() -> None:
     )
     command = UserCommand(UserAction.RESUME)
 
-    with pytest.raises(MotionControlRequired):
-        await executor.execute(command)
-    assert transport.commands == []
-    capability = MotionControls.arm(MOTION_CONFIRMATION)
-    receipt = await executor.execute(command, motion_controls=capability)
+    receipt = await executor.execute(command)
+
     assert receipt.transport_acknowledged
     assert transport.commands == [
         EncodedCommand(bytes.fromhex("4801880100"), "user_command")
@@ -1554,22 +1547,20 @@ async def test_motion_convenience_methods_route_typed_commands_once() -> None:
         protocol_version=25,
         tls_identity_verified=True,
     )
-    motion = MotionControls.arm(MOTION_CONFIRMATION)
     destination = MissionPosture(42, 1.0, 2.0, 0.0)
     plan, current, selected, _ = _reprioritize_plan(ordered=False)
 
     receipts = [
-        await executor.navigate(destination, motion_controls=motion),
-        await executor.navigate_and_wait(destination, motion_controls=motion),
-        await executor.navigate_and_explore(
-            destination,
-            motion_controls=motion,
-        ),
+        await executor.resume(),
+        await executor.dock(),
+        await executor.joystick(0.05, -0.1),
+        await executor.navigate(destination),
+        await executor.navigate_and_wait(destination),
+        await executor.navigate_and_explore(destination),
         await executor.normal_coverage(
             mission_id=42,
             partition_id=UUID(int=100),
             region_ids=(current,),
-            motion_controls=motion,
         ),
         await executor.reprioritize_coverage(
             action=ReprioritizeAction.PRIORITIZE,
@@ -1578,17 +1569,18 @@ async def test_motion_convenience_methods_route_typed_commands_once() -> None:
             current_region_id=current,
             selected_region_id=selected,
             current_session_id=UUID(int=200),
-            motion_controls=motion,
         ),
         await executor.stain_mode(
             mission_id=42,
             stain_mode=StainMode.WET_SPILL,
             circles=(DrawnCircle(1.0, 2.0, 0.25),),
-            motion_controls=motion,
         ),
     ]
 
     assert [receipt.command_key for receipt in receipts] == [
+        "user.resume",
+        "user.dock",
+        "user.joystick",
         "navigation.navigate",
         "navigation.navigate_and_wait",
         "navigation.navigate_and_explore",
@@ -1603,7 +1595,7 @@ async def test_motion_convenience_methods_route_typed_commands_once() -> None:
 
 
 @pytest.mark.asyncio
-async def test_trace_calibration_requires_motion_and_unsafe_capabilities() -> None:
+async def test_trace_calibration_requires_only_unsafe_capability() -> None:
     transport = AcknowledgingTransport()
     executor = CommandExecutor(
         transport,
@@ -1611,20 +1603,14 @@ async def test_trace_calibration_requires_motion_and_unsafe_capabilities() -> No
         tls_identity_verified=True,
     )
     command = UserCommand(UserAction.TRACE_CALIBRATION, mission_id=42)
-    motion = MotionControls.arm(MOTION_CONFIRMATION)
     unsafe = UnsafeControls.arm(UNSAFE_CONFIRMATION)
 
-    with pytest.raises(MotionControlRequired):
-        await executor.execute(command)
     with pytest.raises(UnsafeControlRequired):
-        await executor.execute(command, motion_controls=motion)
-    with pytest.raises(MotionControlRequired):
-        await executor.execute(command, unsafe_controls=unsafe)
+        await executor.execute(command)
     assert transport.commands == []
 
     receipt = await executor.execute(
         command,
-        motion_controls=motion,
         unsafe_controls=unsafe,
     )
     assert receipt.transport_acknowledged
@@ -1637,25 +1623,24 @@ async def test_trace_calibration_requires_motion_and_unsafe_capabilities() -> No
 
 
 @pytest.mark.asyncio
-async def test_direct_joystick_cannot_bypass_teleop_watchdog() -> None:
-    transport = NeverCalledTransport()
+async def test_direct_joystick_sends_once() -> None:
+    transport = AcknowledgingTransport()
     executor = CommandExecutor(
         transport,
         protocol_version=25,
         tls_identity_verified=True,
     )
-    capability = MotionControls.arm(MOTION_CONFIRMATION)
 
-    with pytest.raises(DirectJoystickUnsupported, match="TeleopSession"):
-        await executor.execute(
-            JoystickCommand(0.1, 0.2),
-            motion_controls=capability,
-        )
-    assert transport.calls == 0
+    receipt = await executor.execute(JoystickCommand(0.1, 0.2))
+
+    assert receipt.transport_acknowledged
+    assert transport.commands == [
+        encode_command(JoystickCommand(0.1, 0.2), protocol_version=25)
+    ]
 
 
 @pytest.mark.asyncio
-async def test_client_teleop_routes_joystick_through_guarded_executor() -> None:
+async def test_client_joystick_sends_one_command_without_watchdog_followups() -> None:
     config = MaticConfig(
         "robot.invalid",
         command_protocol_version=25,
@@ -1663,35 +1648,24 @@ async def test_client_teleop_routes_joystick_through_guarded_executor() -> None:
     )
     h2 = FakeCommandH2()
     client = MaticClient(config, h2, credentials=None)  # type: ignore[arg-type]
-    capability = MotionControls.arm(MOTION_CONFIRMATION)
     joystick = JoystickCommand(0.05, -0.1)
     expected_request = _encode_channel_request(
         encode_command(joystick, protocol_version=25)
     )
 
-    async with client.teleop(
-        motion_controls=capability,
-        rate_hz=100.0,
-        lease_seconds=0.04,
-    ) as session:
-        await session.set_velocity(
-            joystick.linear_mps,
-            joystick.angular_rad_s,
-        )
-        for _ in range(20):
-            if any(call[1] == expected_request for call in h2.calls):
-                break
-            await asyncio.sleep(0.005)
+    receipt = await client.commands.joystick(
+        joystick.linear_mps,
+        joystick.angular_rad_s,
+    )
 
-    assert any(call[1] == expected_request for call in h2.calls)
+    assert receipt.transport_acknowledged
+    assert len(h2.calls) == 1
+    assert h2.calls[0][1] == expected_request
     assert all(call[0] == SEND_TO_CHANNEL_PATH for call in h2.calls)
     assert all(
         call[2] == ((HERMES_TARGET_HEADER, "user_command"),) for call in h2.calls
     )
     assert all(call[3] is True for call in h2.calls)
-    assert h2.calls[-1][1] == _encode_channel_request(
-        encode_command(UserCommand(UserAction.STOP), protocol_version=25)
-    )
 
 
 @pytest.mark.asyncio

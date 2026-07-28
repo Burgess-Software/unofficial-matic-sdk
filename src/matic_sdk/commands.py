@@ -44,17 +44,7 @@ from matic_sdk.protocol.commands import (
     EncodedCommand,
     ensure_protocol_compatible,
 )
-from matic_sdk.safety import (
-    DEFAULT_INPUT_LEASE_SECONDS,
-    DEFAULT_MAX_LINEAR_MPS,
-    DEFAULT_TELEOP_RATE_HZ,
-    HARD_MAX_ANGULAR_RAD_S,
-    MotionControls,
-    TeleopSession,
-    UnsafeControls,
-    require_motion_controls,
-    require_unsafe_controls,
-)
+from matic_sdk.safety import UnsafeControls, require_unsafe_controls
 
 _REDACTED = "[REDACTED]"
 _SENSITIVE_KEY_PARTS = (
@@ -80,10 +70,6 @@ class UnverifiedCommandTransport(CommandExecutionError):
 
 class CommandOutcomeUnknown(CommandExecutionError):
     """Transport failed after execution began; callers must not auto-retry."""
-
-
-class DirectJoystickUnsupported(CommandExecutionError):
-    """Joystick intents must use the watchdog-backed TeleopSession path."""
 
 
 class CommandTransport(Protocol):
@@ -194,7 +180,6 @@ class CommandExecutor:
         self._tls_identity_verified = tls_identity_verified
         self._registry = registry
         self._audit = audit_log if audit_log is not None else NullAuditLog()
-        self.__teleop_authority = object()
 
     @property
     def protocol_version(self) -> object:
@@ -204,7 +189,6 @@ class CommandExecutor:
         self,
         command: ControlCommand,
         *,
-        motion_controls: MotionControls | None = None,
         unsafe_controls: UnsafeControls | None = None,
         observe: ObservationCallback | None = None,
     ) -> CommandReceipt:
@@ -212,7 +196,6 @@ class CommandExecutor:
 
         return await self._execute_guarded(
             command,
-            motion_controls=motion_controls,
             unsafe_controls=unsafe_controls,
             observe=observe,
         )
@@ -221,10 +204,8 @@ class CommandExecutor:
         self,
         command: ControlCommand,
         *,
-        motion_controls: MotionControls | None = None,
         unsafe_controls: UnsafeControls | None = None,
         observe: ObservationCallback | None = None,
-        _teleop_authority: object | None = None,
     ) -> CommandReceipt:
         spec = self._registry.spec_for(command)
         command_id = str(uuid4())
@@ -243,22 +224,10 @@ class CommandExecutor:
                 raise UnverifiedCommandTransport(
                     "commands require verified robot TLS identity"
                 )
-            require_motion_controls(
-                spec.requires_motion_controls,
-                motion_controls,
-            )
             require_unsafe_controls(
                 spec.requires_unsafe_controls,
                 unsafe_controls,
             )
-            if (
-                isinstance(command, JoystickCommand)
-                and _teleop_authority is not self.__teleop_authority
-            ):
-                raise DirectJoystickUnsupported(
-                    "JoystickCommand cannot be sent directly; use TeleopSession "
-                    "so hard limits, input leases, and emergency Stop are enforced"
-                )
             encoded = self._registry.encode(
                 command,
                 protocol_version=protocol_version,
@@ -328,36 +297,6 @@ class CommandExecutor:
                 pass
             raise
 
-    def _teleop_session(
-        self,
-        *,
-        motion_controls: MotionControls,
-        max_linear_mps: float = DEFAULT_MAX_LINEAR_MPS,
-        max_angular_rad_s: float = HARD_MAX_ANGULAR_RAD_S,
-        rate_hz: float = DEFAULT_TELEOP_RATE_HZ,
-        lease_seconds: float = DEFAULT_INPUT_LEASE_SECONDS,
-        shutdown_timeout_seconds: float = 1.0,
-    ) -> TeleopSession:
-        """Build the sole executor-backed joystick path for ``MaticClient``."""
-
-        async def send_velocity(command: JoystickCommand) -> CommandReceipt:
-            return await self._execute_guarded(
-                command,
-                motion_controls=motion_controls,
-                _teleop_authority=self.__teleop_authority,
-            )
-
-        return TeleopSession(
-            send_velocity,
-            self.stop,
-            motion_controls=motion_controls,
-            max_linear_mps=max_linear_mps,
-            max_angular_rad_s=max_angular_rad_s,
-            rate_hz=rate_hz,
-            lease_seconds=lease_seconds,
-            shutdown_timeout_seconds=shutdown_timeout_seconds,
-        )
-
     async def stop(self) -> CommandReceipt:
         """Convenience wrapper for the stationary Stop intent."""
 
@@ -371,49 +310,46 @@ class CommandExecutor:
     async def pause(self) -> CommandReceipt:
         return await self.execute(UserCommand(UserAction.PAUSE))
 
-    async def resume(self, *, motion_controls: MotionControls) -> CommandReceipt:
-        return await self.execute(
-            UserCommand(UserAction.RESUME),
-            motion_controls=motion_controls,
-        )
+    async def resume(self) -> CommandReceipt:
+        return await self.execute(UserCommand(UserAction.RESUME))
 
-    async def dock(self, *, motion_controls: MotionControls) -> CommandReceipt:
+    async def dock(self) -> CommandReceipt:
+        return await self.execute(UserCommand(UserAction.DOCK))
+
+    async def joystick(
+        self,
+        linear_mps: float,
+        angular_rad_s: float,
+    ) -> CommandReceipt:
+        """Send one robot-relative velocity command without a background sender."""
+
         return await self.execute(
-            UserCommand(UserAction.DOCK),
-            motion_controls=motion_controls,
+            JoystickCommand(linear_mps, angular_rad_s),
         )
 
     async def navigate(
         self,
         destination: MissionPosture,
-        *,
-        motion_controls: MotionControls,
     ) -> CommandReceipt:
         """Navigate to one mission-relative coordinate."""
 
         return await self.execute(
             NavigationCommand(NavigationMode.NAVIGATE, destination),
-            motion_controls=motion_controls,
         )
 
     async def navigate_and_wait(
         self,
         destination: MissionPosture,
-        *,
-        motion_controls: MotionControls,
     ) -> CommandReceipt:
         """Navigate and install the official fixed 900-second wait condition."""
 
         return await self.execute(
             NavigationCommand(NavigationMode.NAVIGATE_AND_WAIT, destination),
-            motion_controls=motion_controls,
         )
 
     async def navigate_and_explore(
         self,
         destination: MissionPosture,
-        *,
-        motion_controls: MotionControls,
     ) -> CommandReceipt:
         """Navigate to a coordinate and then start exploration."""
 
@@ -422,7 +358,6 @@ class CommandExecutor:
                 NavigationMode.NAVIGATE_AND_EXPLORE,
                 destination,
             ),
-            motion_controls=motion_controls,
         )
 
     async def normal_coverage(
@@ -431,7 +366,6 @@ class CommandExecutor:
         mission_id: int,
         partition_id: UUID,
         region_ids: Iterable[UUID],
-        motion_controls: MotionControls,
         cleaning_mode: CoverageCleaningMode = CoverageCleaningMode.BOTH,
         coverage_setting: CoverageSetting = CoverageSetting.STANDARD,
         ordered: bool = False,
@@ -448,7 +382,6 @@ class CommandExecutor:
                 coverage_setting=coverage_setting,
                 ordered=ordered,
             ),
-            motion_controls=motion_controls,
         )
 
     async def reprioritize_coverage(
@@ -459,7 +392,6 @@ class CommandExecutor:
         goals: CoverageGoals,
         current_region_id: UUID,
         current_session_id: UUID,
-        motion_controls: MotionControls,
         selected_region_id: UUID | None = None,
     ) -> CommandReceipt:
         """Prioritize another region or skip the current coverage region."""
@@ -473,7 +405,6 @@ class CommandExecutor:
                 current_session_id=current_session_id,
                 selected_region_id=selected_region_id,
             ),
-            motion_controls=motion_controls,
         )
 
     async def stain_mode(
@@ -482,7 +413,6 @@ class CommandExecutor:
         mission_id: int,
         stain_mode: StainMode,
         circles: Iterable[DrawnCircle],
-        motion_controls: MotionControls,
     ) -> CommandReceipt:
         """Start the official dry-stain or wet-spill localized program."""
 
@@ -493,7 +423,6 @@ class CommandExecutor:
                 stain_mode=stain_mode,
                 circles=tuple(circles),
             ),
-            motion_controls=motion_controls,
         )
 
     async def set_binary_setting(
@@ -517,7 +446,6 @@ __all__ = [
     "CommandExecutor",
     "CommandOutcomeUnknown",
     "CommandTransport",
-    "DirectJoystickUnsupported",
     "JsonlAuditLog",
     "NullAuditLog",
     "ObservationCallback",

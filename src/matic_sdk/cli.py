@@ -19,6 +19,7 @@ from matic_sdk.credentials import CredentialStore
 from matic_sdk.discovery import BotInformation
 from matic_sdk.discovery import probe as probe_endpoint
 from matic_sdk.enrollment import enroll as enroll_device
+from matic_sdk.models.control import CommandRisk
 from matic_sdk.protocol.collections import KNOWN_TARGETS, TARGET_GROUPS
 from matic_sdk.protocol.commands import (
     COMMAND_REGISTRY,
@@ -722,7 +723,9 @@ def control_status() -> None:
     )
     live_verified = sum(spec.live_delivery_verified for spec in specs)
     motion_available = sum(
-        spec.codec_available and spec.requires_motion_controls for spec in specs
+        spec.codec_available
+        and spec.risk in {CommandRisk.MOTION, CommandRisk.RAW_ACTUATION}
+        for spec in specs
     )
     typer.echo(
         json.dumps(
@@ -737,8 +740,7 @@ def control_status() -> None:
                     "user.stop"
                 ).codec_available,
                 "motion_codecs_available": motion_available,
-                "watchdog_teleop_enabled": True,
-                "direct_joystick_execute_enabled": False,
+                "direct_joystick_enabled": True,
                 "remaining_fail_closed_commands": len(specs) - available,
             },
             indent=2,

@@ -49,8 +49,9 @@ The registry documents 65 intents and exact Hermes targets. Thirty inner
 command encodings have been reconstructed completely and retained as synthetic
 golden evidence; 29 have enabled codecs. Raw-motor bytes remain disabled until
 hardware-safe ranges are proven. Enabled `wire_verified` codecs can be selected
-only for the observed protocol version and remain subject to the command's
-risk gates. The other 35 intents also fail before network I/O.
+only for the observed protocol version. Hazardous codecs remain subject to
+`UnsafeControls`; motion codecs have no capability gate. The other 35 intents
+also fail before network I/O.
 
 An empty inner protobuf is a valid command body for the commands whose schema
 has no fields. Because protobuf omits default values, `ChannelRequest.value`
@@ -60,9 +61,10 @@ a missing payload.
 
 Ten codecs have the separate SDK live-delivery flag. The remaining exact
 formats have offline wire proof only; raw motors are registry-disabled.
-Joystick sending is available only through the watchdog-backed teleoperation
-path, while direct `JoystickCommand` execution remains blocked. See the
-[per-command ledger](command-verification.md) for the exact boundary.
+Joystick sending is available directly through `robot.commands.joystick()`.
+Each call sends once; the SDK adds no background watchdog, automatic zero, or
+automatic Stop. See the [per-command ledger](command-verification.md) for the
+exact boundary.
 
 This project contains reconstructed protocol descriptions and synthetic test
 vectors. It does not redistribute the Android application or native library.

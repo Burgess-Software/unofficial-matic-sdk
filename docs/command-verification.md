@@ -20,21 +20,21 @@ unless the row explicitly says yes.
 | `user.stop` | `user_command` | Wire / yes | Yes | None / stationary | Acknowledged while docked; no transition claimed |
 | `user.stay_put` | `user_command` | Wire / yes | Yes | None / stationary | Acknowledged while docked; no transition claimed |
 | `user.pause` | `user_command` | Wire / yes | Yes | None / stationary | Acknowledged while docked; no transition claimed |
-| `user.resume` | `user_command` | Wire / yes | No | `MotionControls` / motion | No motion-changing live test |
-| `user.dock` | `user_command` | Wire / yes | Yes | `MotionControls` / motion | On 2026-07-28 an acknowledged command transitioned ready → returning → charging in about eight seconds with no robot errors |
-| `user.explore` | `user_command` | Wire / yes | No | `MotionControls` / motion | No motion-changing live test |
-| `user.re_explore` | `user_command` | Wire / yes | No | `MotionControls` / motion | No motion-changing live test |
-| `user.redo_coverage` | `user_command` | Wire / yes | No | `MotionControls` / motion | No motion-changing live test |
-| `user.resume_coverage` | `user_command` | Wire / yes | No | `MotionControls` / motion | No motion-changing live test |
-| `user.trace_calibration` | `user_command` | Wire / yes | No | `MotionControls` + `UnsafeControls` / raw actuation | Hazardous motion; offline wire proof only |
-| `user.joystick` | `user_command` | Wire / yes | Yes | `MotionControls` / motion | A bounded forward sequence produced 25 acknowledged sends and a docked-to-ready state transition; zero plus Stop completed |
-| `navigation.navigate` | `user_command` | Wire / yes | Yes | `MotionControls` / motion | On 2026-07-28 a corrected canonical-frame command reached the requested pose within 0.012 m and 0.078 rad; Stop was acknowledged and no robot errors appeared |
-| `navigation.navigate_and_wait` | `user_command` | Wire / yes | No | `MotionControls` / motion | Exact fixed 900-second wait envelope; no live test |
-| `navigation.navigate_and_explore` | `user_command` | Wire / yes | No | `MotionControls` / motion | Exact NavigateTo plus Explore task envelope; no live test |
-| `coverage.normal` | `user_command` | Wire / yes | Yes | `MotionControls` / motion | On 2026-07-28 a bounded one-room Quick Vacuum run was acknowledged; its active mission, session, goals, and current region decoded successfully before Stop and Dock |
-| `coverage.reprioritize` | `user_command` | Wire / yes | No | `MotionControls` / motion | Exact Prioritize and Skip plan transforms; requires the current goal plan and session ID; Add/Redo not exposed |
-| `coverage.stain_mode` | `user_command` | Wire / yes | No | `MotionControls` / motion | Exact dry-stain and wet-spill drawn-circle plans; no live test |
-| `cleaning.manual` | `user_command` | Wire / yes | No | `MotionControls` / motion | No motion-changing live test |
+| `user.resume` | `user_command` | Wire / yes | No | None / motion | No motion-changing live test |
+| `user.dock` | `user_command` | Wire / yes | Yes | None / motion | On 2026-07-28 an acknowledged command transitioned ready → returning → charging in about eight seconds with no robot errors |
+| `user.explore` | `user_command` | Wire / yes | No | None / motion | No motion-changing live test |
+| `user.re_explore` | `user_command` | Wire / yes | No | None / motion | No motion-changing live test |
+| `user.redo_coverage` | `user_command` | Wire / yes | No | None / motion | No motion-changing live test |
+| `user.resume_coverage` | `user_command` | Wire / yes | No | None / motion | No motion-changing live test |
+| `user.trace_calibration` | `user_command` | Wire / yes | No | `UnsafeControls` / raw actuation | Hazardous motion; offline wire proof only |
+| `user.joystick` | `user_command` | Wire / yes | Yes | None / motion | Each call sends once with no SDK watchdog; a bounded forward sequence produced 25 acknowledged sends and a docked-to-ready state transition; explicit zero plus Stop completed |
+| `navigation.navigate` | `user_command` | Wire / yes | Yes | None / motion | On 2026-07-28 a corrected canonical-frame command reached the requested pose within 0.012 m and 0.078 rad; Stop was acknowledged and no robot errors appeared |
+| `navigation.navigate_and_wait` | `user_command` | Wire / yes | No | None / motion | Exact fixed 900-second wait envelope; no live test |
+| `navigation.navigate_and_explore` | `user_command` | Wire / yes | No | None / motion | Exact NavigateTo plus Explore task envelope; no live test |
+| `coverage.normal` | `user_command` | Wire / yes | Yes | None / motion | On 2026-07-28 a bounded one-room Quick Vacuum run was acknowledged; its active mission, session, goals, and current region decoded successfully before Stop and Dock |
+| `coverage.reprioritize` | `user_command` | Wire / yes | No | None / motion | Exact Prioritize and Skip plan transforms; requires the current goal plan and session ID; Add/Redo not exposed |
+| `coverage.stain_mode` | `user_command` | Wire / yes | No | None / motion | Exact dry-stain and wet-spill drawn-circle plans; no live test |
+| `cleaning.manual` | `user_command` | Wire / yes | No | None / motion | No motion-changing live test |
 | `raw_motors.setpoints` | `motor_command` | Wire / no | No | Disabled / raw actuation | Exact fields known; hardware-safe ranges are not, so no registry codec |
 | `map.build_partition` | `build_regions` | Static type / no | No | `UnsafeControls` / persistent | Exact inner protobuf tags incomplete |
 | `map.edit_rooms` | `rename_area_command` | Static type / no | No | `UnsafeControls` / persistent | Exact edit oneof and tags incomplete |

@@ -56,10 +56,10 @@ blocker.
 Wire verification and live delivery are separate facts. A wire-verified format
 means its inner protobuf, target, and `ChannelRequest` envelope are exact; it
 does not claim that this SDK has sent the command or observed its effect.
-Motion and hazardous encoders still require their explicit short-lived
-capabilities. Trace calibration requires both. Joystick control is available
-only through the watchdog-backed `MaticClient.teleop()` path; direct execution
-is blocked.
+Motion commands have no capability gate. Enabled hazardous encoders require
+`UnsafeControls`; trace calibration is in that category. A direct
+`robot.commands.joystick(linear_mps, angular_rad_s)` call sends exactly one
+velocity command without a background watchdog or automatic Stop.
 
 `ChannelRequest` field 1 contains the channel name and field 2 contains the
 inner payload. For a valid empty protobuf command, field 2 is canonically
@@ -75,8 +75,8 @@ setting values, wrote each setting's existing value, and sent the other five
 commands once each. Neither path retried an ambiguous outcome. The robot
 remained docked and the settings remained unchanged, so the evidence establishes
 delivery without manufacturing a state-transition claim. On 2026-07-28, a
-watchdog-backed joystick sequence produced 25 acknowledged velocity/zero/Stop
-sends with no failures and a docked-to-ready state transition. A bounded
+bounded joystick sequence produced 25 acknowledged velocity/zero/Stop sends
+with no failures and a docked-to-ready state transition. A bounded
 navigation run then exposed a yaw-frame bug; after correction, a second command
 reached its requested pose within 0.012 m and 0.078 rad, followed by an
 acknowledged Stop and ready state with no errors. An acknowledged Dock command

@@ -142,14 +142,14 @@ from an unknown or guessed payload.
 Exact wire evidence is necessary but not always sufficient to register an
 encoder, and it is not live delivery evidence. Raw-motor encoding remains
 disabled because hardware-safe ranges are not proven. Commands with incomplete
-or policy-disabled encodings fail before opening a mutating stream. Exact
-motion and unsafe commands retain their separate short-lived capability gates;
-trace calibration requires both. Direct joystick execution remains blocked.
-The supported `MaticClient.teleop()` path connects the exact joystick encoder to
-the watchdog-backed session while retaining the executor's TLS, protocol,
-capability, audit, and no-retry boundaries. That local integration is
-automatically tested. A bounded live test on 2026-07-28 additionally produced
-25 acknowledged sends with no failures and a docked-to-ready state transition.
+or policy-disabled encodings fail before opening a mutating stream. Motion
+commands have no capability gate. Enabled hazardous commands retain the
+short-lived `UnsafeControls` gate; trace calibration is in that category.
+Direct joystick calls use the exact encoder while retaining the executor's TLS,
+protocol, codec, audit, and no-retry boundaries. Each call sends once; there is
+no SDK-managed watchdog or automatic Stop. A bounded live test on 2026-07-28
+produced 25 acknowledged sends with no failures and a docked-to-ready state
+transition.
 
 The SDK implementations of Stop, StayPut, Pause, child lock, pet-waste
 avoidance, and voice were exercised against an owner-authorized robot on
@@ -159,7 +159,7 @@ each same-value setting write once. Neither path retried an ambiguous result. A
 pinned TLS identity, authenticated handshake, one Hermes response per command,
 and gRPC status 0 established delivery. The robot stayed docked and each
 setting preserved its value, so no physical or setting transition was claimed.
-On 2026-07-28, the watchdog-backed joystick path produced 25 acknowledged
+On 2026-07-28, a bounded joystick sequence produced 25 acknowledged
 velocity/zero/Stop sends with no failures and a docked-to-ready state
 transition. A first bounded navigation run reached its requested position but
 revealed that canonical heading had not crossed the same reflected coordinate

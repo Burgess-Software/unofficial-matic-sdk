@@ -25,12 +25,11 @@ service without a cloud relay.
   responses.
 - Stop, pause, tell the robot to stay put, or send it back to charge using
   typed Python APIs exercised against a real robot.
-- Drive with a dead-man joystick session or navigate to a mission pose through
-  explicitly armed APIs exercised against a real robot.
-- Run normal room coverage through an explicitly armed API exercised against a
-  real robot.
+- Send direct joystick velocities or navigate to a mission pose through typed
+  APIs exercised against a real robot.
+- Run normal room coverage through a typed API exercised against a real robot.
 - Reprioritize an active plan or clean a drawn dry-stain/wet-spill area through
-  explicitly armed, wire-verified APIs.
+  typed, wire-verified APIs.
 
 The [command verification ledger](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/command-verification.md) shows exactly
 which controls were exercised live, which have offline wire proof, and which
@@ -218,7 +217,7 @@ schema has been proven.
 The CLI can inspect command support with `matic control list` and
 `matic control status`, but it deliberately has no generic command sender.
 Writes use typed Python APIs, verified TLS, an explicitly selected protocol
-version, and command-specific safety gates.
+version, and command-specific wire codecs.
 
 ### Stop, pause, or stay put
 
@@ -248,17 +247,15 @@ asyncio.run(stop_robot())
 path. Stop, Pause, and StayPut have each been acknowledged by a real robot while
 it remained docked.
 
-### Intentionally enable a motion command
+### Send a motion command
 
-Motion-capable commands require a short-lived `MotionControls` capability. For
-example, this program requests Dock while keeping the capability valid for no
-more than 30 seconds. Keep the robot in view when you run it:
+Motion commands are direct method calls. For example, this program requests
+Dock:
 
 ```python
 import asyncio
 
-from matic_sdk import MaticClient, MaticConfig, MotionControls, TlsConfig
-from matic_sdk.safety import MOTION_CONFIRMATION
+from matic_sdk import MaticClient, MaticConfig, TlsConfig
 
 
 async def request_dock() -> None:
@@ -270,11 +267,7 @@ async def request_dock() -> None:
     async with await MaticClient.connect_from_store(
         "living-room", config
     ) as robot:
-        motion = MotionControls.arm(MOTION_CONFIRMATION, ttl_seconds=30)
-        try:
-            await robot.commands.dock(motion_controls=motion)
-        finally:
-            motion.disarm()
+        await robot.commands.dock()
 
 
 asyncio.run(request_dock())
@@ -282,20 +275,17 @@ asyncio.run(request_dock())
 
 Dock has been exercised live through a ready-to-returning-to-charging state
 transition. Other autonomous motion codecs retain their individual evidence
-labels in the command ledger. The watchdog-backed joystick path below has been
-acknowledged live through a docked-to-ready state transition.
+labels in the command ledger. Joystick delivery has been acknowledged live
+through a docked-to-ready state transition.
 
-### Drive with the watchdog-backed joystick
+### Drive with direct joystick commands
 
-Joystick control is available only through `MaticClient.teleop()`. The session
-publishes the latest velocity at a bounded rate, expires stale input after 250
-ms by default, and sends zero velocity followed by Stop when it exits:
+Each `joystick()` call sends one linear/angular velocity command:
 
 ```python
 import asyncio
 
-from matic_sdk import MaticClient, MaticConfig, MotionControls, TlsConfig
-from matic_sdk.safety import MOTION_CONFIRMATION
+from matic_sdk import MaticClient, MaticConfig, TlsConfig
 
 
 async def drive_briefly() -> None:
@@ -307,22 +297,18 @@ async def drive_briefly() -> None:
     async with await MaticClient.connect_from_store(
         "living-room", config
     ) as robot:
-        motion = MotionControls.arm(MOTION_CONFIRMATION, ttl_seconds=30)
-        try:
-            async with robot.teleop(motion_controls=motion) as joystick:
-                await joystick.set_velocity(0.05, 0.0)
-                await asyncio.sleep(0.5)
-                await joystick.release()
-        finally:
-            motion.disarm()
+        await robot.commands.joystick(0.05, 0.0)
+        await asyncio.sleep(0.5)
+        await robot.commands.joystick(0.0, 0.0)
 
 
 asyncio.run(drive_briefly())
 ```
 
-Keep refreshing `set_velocity()` while input is active. Direct
-`execute(JoystickCommand(...))` calls are rejected so they cannot bypass the
-watchdog and emergency-stop sequence.
+The SDK does not repeat joystick commands in the background, expire stale
+input, send zero velocity, or issue Stop automatically. Send every command your
+control loop requires, including an explicit zero or `robot.commands.stop()`
+when that is the behavior you want.
 
 ### Navigate or start coverage
 
@@ -343,11 +329,9 @@ from matic_sdk import (
     MaticClient,
     MaticConfig,
     MissionPosture,
-    MotionControls,
     StainMode,
     TlsConfig,
 )
-from matic_sdk.safety import MOTION_CONFIRMATION
 
 
 async def run_one_motion_command() -> None:
@@ -359,45 +343,35 @@ async def run_one_motion_command() -> None:
     async with await MaticClient.connect_from_store(
         "living-room", config
     ) as robot:
-        motion = MotionControls.arm(MOTION_CONFIRMATION, ttl_seconds=30)
-        try:
-            destination = MissionPosture(
-                mission_id=42,
-                x_meters=1.0,
-                y_meters=2.0,
-                yaw_radians=0.0,
-            )
+        destination = MissionPosture(
+            mission_id=42,
+            x_meters=1.0,
+            y_meters=2.0,
+            yaw_radians=0.0,
+        )
 
-            # Run exactly one intended operation. This example selects Navigate.
-            await robot.commands.navigate(destination, motion_controls=motion)
+        # Run exactly one intended operation. This example selects Navigate.
+        await robot.commands.navigate(destination)
 
-            # Alternatives:
-            # await robot.commands.navigate_and_wait(
-            #     destination, motion_controls=motion
-            # )
-            # await robot.commands.navigate_and_explore(
-            #     destination, motion_controls=motion
-            # )
-            # await robot.commands.normal_coverage(
-            #     mission_id=42,
-            #     partition_id=UUID("PARTITION_UUID"),
-            #     region_ids=[UUID("REGION_UUID")],
-            #     motion_controls=motion,
-            # )
-            # await robot.commands.stain_mode(
-            #     mission_id=42,
-            #     stain_mode=StainMode.DRY_STAIN,
-            #     circles=[
-            #         DrawnCircle(
-            #             x_meters=1.0,
-            #             y_meters=2.0,
-            #             radius_meters=0.25,
-            #         )
-            #     ],
-            #     motion_controls=motion,
-            # )
-        finally:
-            motion.disarm()
+        # Alternatives:
+        # await robot.commands.navigate_and_wait(destination)
+        # await robot.commands.navigate_and_explore(destination)
+        # await robot.commands.normal_coverage(
+        #     mission_id=42,
+        #     partition_id=UUID("PARTITION_UUID"),
+        #     region_ids=[UUID("REGION_UUID")],
+        # )
+        # await robot.commands.stain_mode(
+        #     mission_id=42,
+        #     stain_mode=StainMode.DRY_STAIN,
+        #     circles=[
+        #         DrawnCircle(
+        #             x_meters=1.0,
+        #             y_meters=2.0,
+        #             radius_meters=0.25,
+        #         )
+        #     ],
+        # )
 
 
 asyncio.run(run_one_motion_command())
@@ -420,7 +394,7 @@ command must send back:
 from matic_sdk import ReprioritizeAction
 
 
-async def prioritize_next_region(robot, motion, selected_region_id) -> None:
+async def prioritize_next_region(robot, selected_region_id) -> None:
     snapshot = await robot.reprioritization_snapshot(timeout=5.0)
     if snapshot is None:
         print("The robot does not have an active coverage session.")
@@ -436,7 +410,6 @@ async def prioritize_next_region(robot, motion, selected_region_id) -> None:
         current_region_id=snapshot.current_region_id,
         selected_region_id=selected_region_id,
         current_session_id=snapshot.current_session_id,
-        motion_controls=motion,
     )
 ```
 
@@ -509,9 +482,9 @@ ambiguous command outcome is never retried automatically.
 - Most collection payloads have a safe raw-byte interface but not yet a
   friendly high-level model.
 - Maps and voxels are decoded from captures; this is not a live map dashboard.
-- Joystick sending is supported only through the watchdog-backed teleoperation
-  path; direct command execution remains blocked. Raw-motor sending is disabled
-  until hardware-safe ranges are known.
+- Each joystick call sends exactly one command; the SDK does not provide a
+  background resend loop, dead-man lease, automatic zero, or automatic Stop.
+  Raw-motor sending is disabled until hardware-safe ranges are known.
 - The portal-backed remote transport is experimental and not currently
   reliable; normal operation is local-network only.
 - The SDK does not provide firmware images, root access, a filesystem, or an

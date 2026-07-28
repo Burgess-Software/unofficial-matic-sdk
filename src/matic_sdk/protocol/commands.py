@@ -136,7 +136,6 @@ class CommandSpec:
     known_payload: bytes | None = None
     known_hermes_target: str | None = None
     requires_unsafe_controls: bool = False
-    requires_motion_controls: bool = False
     codec_enabled: bool = True
     live_delivery_verified: bool = False
     evidence: str = "Matic Android 1.151.0 generated bindings/libmegazord.so"
@@ -191,7 +190,6 @@ def _spec(
     target: str | None = None,
     wire_verified: bool = False,
     codec_enabled: bool = True,
-    motion: bool | None = None,
     live_verified: bool = False,
     evidence: str | None = None,
 ) -> CommandSpec:
@@ -232,9 +230,6 @@ def _spec(
             else (USER_COMMAND_HERMES_TARGET if family is CommandFamily.USER else None)
         ),
         requires_unsafe_controls=unsafe,
-        requires_motion_controls=(
-            risk is CommandRisk.MOTION if motion is None else motion
-        ),
         codec_enabled=codec_enabled,
         live_delivery_verified=live_verified,
         evidence=(
@@ -1319,7 +1314,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         UserCommand,
         "UserCommand.TraceCalib8",
         unsafe=True,
-        motion=True,
         fields=("missionId: u32",),
         wire_verified=True,
         evidence=(
@@ -1339,7 +1333,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         evidence=(
             "Matic Android 1.151.0 native UserCommand::to_proto disassembly "
             "proves both nested field-2 envelopes and float32 fields 1 and 2; "
-            "watchdog-backed SDK delivery acknowledged with docked-to-ready "
+            "bounded SDK delivery acknowledged with docked-to-ready "
             "state transition 2026-07-28"
         ),
     ),
