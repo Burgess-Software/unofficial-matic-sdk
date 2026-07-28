@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from matic_sdk.client import MaticClient
+from matic_sdk.collection_json import collection_model_to_dict
 from matic_sdk.collection_models import (
     COLLECTION_MODEL_TYPES,
     decode_collection_event,
@@ -72,7 +73,7 @@ from matic_sdk.protocol.commands import (
     UnverifiedProtocolVersionWarning,
 )
 
-__version__ = "0.1.0a2"
+__version__ = "0.1.0a3"
 
 __all__ = [
     "COLLECTION_MODEL_TYPES",
@@ -141,6 +142,7 @@ __all__ = [
     "UserCommand",
     "Weekday",
     "__version__",
+    "collection_model_to_dict",
     "decode_collection_event",
     "decode_collection_payload",
 ]

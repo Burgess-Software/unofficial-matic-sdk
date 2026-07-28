@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import stat
 import uuid
@@ -53,6 +54,107 @@ def test_collection_summary_omits_stable_key_and_payload_hashes() -> None:
         "payload_bytes": len(payload),
     }
     assert all("sha256" not in key for key in summary)
+
+
+def _collection_response(payload: bytes) -> bytes:
+    value = encode_bytes_field(5, encode_bytes_field(1, payload))
+    return encode_bytes_field(2, value)
+
+
+def test_decode_recorded_collection_uses_manifest_and_redacts_sensitive_data(
+    tmp_path,
+) -> None:
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    filename = "000000-app_customer_info.pb"
+    response = _collection_response(encode_bytes_field(1, b"owner@example.invalid"))
+    (capture / filename).write_bytes(response)
+    (capture / "manifest.json").write_text(
+        json.dumps(
+            {
+                "format": "unofficial-matic-sdk-telemetry-v1",
+                "events": [
+                    {
+                        "file": filename,
+                        "target": "app_customer_info",
+                        "received_at": "2026-01-01T00:00:00+00:00",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        ["collections", "decode", str(capture), "--json"],
+    )
+
+    assert result.exit_code == 0
+    decoded = json.loads(result.stdout)
+    assert decoded["source"] == filename
+    assert decoded["received_at"] == "2026-01-01T00:00:00+00:00"
+    assert decoded["model"]["type"] == "CustomerInfoCollectionModel"
+    assert decoded["model"]["email"] == "[REDACTED]"
+    assert "raw_payload" not in decoded["model"]
+    assert "fields" not in decoded["model"]
+
+    sensitive = runner.invoke(
+        app,
+        [
+            "collections",
+            "decode",
+            str(capture),
+            "--json",
+            "--include-sensitive",
+        ],
+    )
+    assert sensitive.exit_code == 0
+    assert json.loads(sensitive.stdout)["model"]["email"] == ("owner@example.invalid")
+
+
+def test_decode_single_collection_response_requires_and_uses_target(tmp_path) -> None:
+    capture = tmp_path / "event.bin"
+    capture.write_bytes(_collection_response(encode_bytes_field(1, b"v200.1")))
+
+    missing = runner.invoke(app, ["collections", "decode", str(capture)])
+    assert missing.exit_code != 0
+    assert "--target is required" in missing.output
+
+    result = runner.invoke(
+        app,
+        [
+            "collections",
+            "decode",
+            str(capture),
+            "--target",
+            "current_version",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["model"]["version_name"] == "v200.1"
+
+
+def test_decode_rejects_oversized_capture_manifest(monkeypatch, tmp_path) -> None:
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    manifest = capture / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "format": "unofficial-matic-sdk-telemetry-v1",
+                "events": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("matic_sdk.cli._MAX_CAPTURE_MANIFEST_BYTES", 1)
+
+    result = runner.invoke(app, ["collections", "decode", str(capture)])
+
+    assert result.exit_code != 0
+    assert "manifest exceeds" in result.output
 
 
 def test_map_command_without_extra_returns_install_hint(
