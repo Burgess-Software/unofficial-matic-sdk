@@ -139,17 +139,16 @@ Official-client behavior corroborates one half-closed request and one
 its `ChannelRequest` therefore omits the default bytes field. This is distinct
 from an unknown or guessed payload.
 
-Exact wire evidence is necessary but not always sufficient to register an
-encoder, and it is not live delivery evidence. Raw-motor encoding remains
-disabled because hardware-safe ranges are not proven. Commands with incomplete
-or policy-disabled encodings fail before opening a mutating stream. Motion
-commands have no capability gate. Enabled hazardous commands retain the
-short-lived `UnsafeControls` gate; trace calibration is in that category.
-Direct joystick calls use the exact encoder while retaining the executor's TLS,
-protocol, codec, audit, and no-retry boundaries. Each call sends once; there is
-no SDK-managed watchdog or automatic Stop. A bounded live test on 2026-07-28
-produced 25 acknowledged sends with no failures and a docked-to-ready state
-transition.
+Exact wire evidence is necessary to register an encoder, and it is not live
+delivery evidence. The exact raw-motor encoder is registered with no
+device-specific range limits. Commands with incomplete encodings fail before
+opening a mutating stream. Every enabled typed command is callable directly;
+registry risk labels are informational and add no confirmation or capability
+gate. Direct joystick calls use the exact encoder while retaining the
+executor's TLS, protocol, codec, audit, and no-retry boundaries. Each call
+sends once; there is no SDK-managed watchdog or automatic Stop. A bounded live
+test on 2026-07-28 produced 25 acknowledged sends with no failures and a
+docked-to-ready state transition.
 
 The SDK implementations of Stop, StayPut, Pause, child lock, pet-waste
 avoidance, and voice were exercised against an owner-authorized robot on

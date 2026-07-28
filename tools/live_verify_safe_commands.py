@@ -19,9 +19,7 @@ from matic_sdk.config import DEFAULT_HERMES_PORT, MaticConfig, TlsConfig
 from matic_sdk.credentials import BotToken
 from matic_sdk.models.control import SettingAction
 from matic_sdk.protocol.wire import WireType, decode_varint, parse_fields
-from matic_sdk.safety import UNSAFE_CONFIRMATION, UnsafeControls
 
-_LIVE_CONFIRMATION = "verify bounded stationary and idempotent commands"
 _SETTING_READ_TARGETS = {
     SettingAction.CHILD_LOCK: "child_lock_enabled_state",
     SettingAction.PET_WASTE_AVOIDANCE: "petwaste_enabled_state",
@@ -137,35 +135,27 @@ async def _run_bounded_verification(client: MaticClient) -> None:
     for action, target in _SETTING_READ_TARGETS.items():
         setting_values[action] = _decode_binary_state(await _read_state(client, target))
 
-    capability = UnsafeControls.arm(UNSAFE_CONFIRMATION)
-    try:
-        for action, before in setting_values.items():
-            await _require_safely_parked(
-                client,
-                stage=f"immediately before settings.{action.value}",
+    for action, before in setting_values.items():
+        await _require_safely_parked(
+            client,
+            stage=f"immediately before settings.{action.value}",
+        )
+        receipt = await client.commands.set_binary_setting(action, before)
+        after = _decode_binary_state(
+            await _read_state(client, _SETTING_READ_TARGETS[action])
+        )
+        _emit(
+            command=f"settings.{action.value}",
+            attempts=1,
+            acknowledged=receipt.transport_acknowledged,
+            before=before,
+            after=after,
+            unchanged=before is after,
+        )
+        if before is not after:
+            raise RuntimeError(
+                f"{action.value} changed during an idempotent verification"
             )
-            receipt = await client.commands.set_binary_setting(
-                action,
-                before,
-                unsafe_controls=capability,
-            )
-            after = _decode_binary_state(
-                await _read_state(client, _SETTING_READ_TARGETS[action])
-            )
-            _emit(
-                command=f"settings.{action.value}",
-                attempts=1,
-                acknowledged=receipt.transport_acknowledged,
-                before=before,
-                after=after,
-                unchanged=before is after,
-            )
-            if before is not after:
-                raise RuntimeError(
-                    f"{action.value} changed during an idempotent verification"
-                )
-    finally:
-        capability.disarm()
 
     for command_name, sender in (
         ("user.pause", client.commands.pause),
@@ -191,9 +181,6 @@ async def _run_bounded_verification(client: MaticClient) -> None:
 
 
 async def _verify(args: argparse.Namespace) -> None:
-    if args.confirm != _LIVE_CONFIRMATION:
-        raise ValueError(f"--confirm must equal {_LIVE_CONFIRMATION!r}")
-
     token = BotToken.decode(args.token_file.read_bytes())
     config = MaticConfig(
         host=args.host,
@@ -215,7 +202,6 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--server-name")
     parser.add_argument("--certificate-sha256", required=True)
     parser.add_argument("--token-file", required=True, type=Path)
-    parser.add_argument("--confirm", required=True)
     return parser
 
 

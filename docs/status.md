@@ -1,4 +1,4 @@
-# Capability status
+# SDK status
 
 Control evidence has two independent axes. The codec evidence levels are
 `static_type`, `static_fields`, `payload_verified`, and `wire_verified`;
@@ -32,11 +32,11 @@ command families. The Hermes RPC and typed client-side models are static
 evidence. Each encoder in this SDK must carry its own verification level.
 
 The registry documents 65 command intents and exact Hermes targets for each.
-Thirty have exact wire formats and 29 have registered codecs. Thirty-five
-remain fail-closed because their inner protobuf encoding is incomplete;
-raw-motor encoding is exact but also fails closed because hardware-safe ranges
-are unproven. The [command verification ledger](command-verification.md)
-records every target, evidence level, live state, safety gate, and blocker.
+Thirty have exact wire formats and registered codecs. Thirty-five remain
+fail-closed because their inner protobuf encoding is incomplete. Raw-motor
+encoding is exact and directly available without device-specific range limits.
+The [command verification ledger](command-verification.md)
+records every target, evidence level, live state, risk label, and blocker.
 
 On 2026-07-22 an initial one-shot check sent Stop once. A separate bounded
 verifier sent StayPut, Pause, child lock, pet-waste avoidance, and voice once
@@ -65,11 +65,11 @@ returned the robot to charging.
 
 The other 20 exact formats have offline wire evidence only. No raw-actuation,
 destructive, network-changing, update, reboot, or shutdown command was
-live-tested. Raw-motor encoding is not registered at all. `UnsafeControls`
-gates enabled hazardous codecs; motion commands have no capability gate.
-Neither changes an encoder's evidence level. Direct joystick control is
-available through `robot.commands.joystick()`, with one send per call and no
-SDK-managed watchdog, automatic zero, or automatic Stop.
+live-tested. Raw-motor encoding is registered but has not been exercised live.
+All enabled typed commands are callable directly; risk classifications are
+informational and do not change an encoder's evidence level. Direct joystick
+control is available through `robot.commands.joystick()`, with one send per
+call and no SDK-managed watchdog, automatic zero, or automatic Stop.
 
 ## Firmware boundary
 

@@ -323,7 +323,7 @@ class CleaningCommand(ControlCommand):
 
 @dataclass(frozen=True, slots=True)
 class RawMotorCommand(ControlCommand):
-    """Direct cleaning-mechanism setpoints; always requires unsafe arming."""
+    """Direct cleaning-mechanism setpoints."""
 
     vacuum_rpm: float | None = None
     sweeper_duty: float | None = None

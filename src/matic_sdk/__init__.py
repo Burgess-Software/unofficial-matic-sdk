@@ -28,6 +28,7 @@ from matic_sdk.models.control import (
     MissionPosture,
     NavigationCommand,
     NavigationMode,
+    RawMotorCommand,
     ReprioritizeAction,
     ReprioritizeCoverageCommand,
     StainMode,
@@ -36,7 +37,6 @@ from matic_sdk.models.control import (
 )
 from matic_sdk.protocol.collections import KNOWN_TARGETS, RawCollectionEvent
 from matic_sdk.protocol.commands import COMMAND_REGISTRY, COMMAND_SPECS
-from matic_sdk.safety import UnsafeControls
 
 __version__ = "0.1.0a1"
 
@@ -69,13 +69,13 @@ __all__ = [
     "NavigationCommand",
     "NavigationMode",
     "RawCollectionEvent",
+    "RawMotorCommand",
     "ReprioritizationSnapshot",
     "ReprioritizeAction",
     "ReprioritizeCoverageCommand",
     "SecurityMode",
     "StainMode",
     "TlsConfig",
-    "UnsafeControls",
     "UserAction",
     "UserCommand",
     "__version__",

@@ -74,10 +74,8 @@ async def test_bounded_verifier_rechecks_parked_state_before_each_send(
             self,
             action: SettingAction,
             enabled: bool,
-            *,
-            unsafe_controls: object,
         ) -> FakeReceipt:
-            del enabled, unsafe_controls
+            del enabled
             self.settings.append(action)
             return FakeReceipt()
 

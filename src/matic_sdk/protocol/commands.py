@@ -135,8 +135,6 @@ class CommandSpec:
     known_fields: tuple[str, ...] = ()
     known_payload: bytes | None = None
     known_hermes_target: str | None = None
-    requires_unsafe_controls: bool = False
-    codec_enabled: bool = True
     live_delivery_verified: bool = False
     evidence: str = "Matic Android 1.151.0 generated bindings/libmegazord.so"
 
@@ -144,10 +142,7 @@ class CommandSpec:
     def codec_available(self) -> bool:
         """Whether the checked-in default registry may encode this command."""
 
-        return (
-            self.evidence_level is CodecEvidenceLevel.WIRE_VERIFIED
-            and self.codec_enabled
-        )
+        return self.evidence_level is CodecEvidenceLevel.WIRE_VERIFIED
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,24 +179,14 @@ def _spec(
     model_type: type[ControlCommand],
     native_type: str,
     *,
-    unsafe: bool = False,
     fields: tuple[str, ...] = (),
     payload: bytes | None = None,
     target: str | None = None,
     wire_verified: bool = False,
-    codec_enabled: bool = True,
     live_verified: bool = False,
     evidence: str | None = None,
 ) -> CommandSpec:
-    unsafe_risks = {
-        CommandRisk.PERSISTENT,
-        CommandRisk.SENSITIVE,
-        CommandRisk.RAW_ACTUATION,
-        CommandRisk.DESTRUCTIVE,
-    }
-    if risk in unsafe_risks and not unsafe:
-        raise ValueError(f"{risk.value} commands require unsafe controls")
-    if live_verified and (not wire_verified or not codec_enabled):
+    if live_verified and not wire_verified:
         raise ValueError("live command verification requires an enabled wire codec")
     return CommandSpec(
         key=key,
@@ -229,8 +214,6 @@ def _spec(
             if target is not None
             else (USER_COMMAND_HERMES_TARGET if family is CommandFamily.USER else None)
         ),
-        requires_unsafe_controls=unsafe,
-        codec_enabled=codec_enabled,
         live_delivery_verified=live_verified,
         evidence=(
             evidence
@@ -1313,7 +1296,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.RAW_ACTUATION,
         UserCommand,
         "UserCommand.TraceCalib8",
-        unsafe=True,
         fields=("missionId: u32",),
         wire_verified=True,
         evidence=(
@@ -1492,7 +1474,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.RAW_ACTUATION,
         RawMotorCommand,
         "CleaningMotorCommand",
-        unsafe=True,
         target="motor_command",
         fields=(
             "vacuumRpm: Option<float32>",
@@ -1502,10 +1483,9 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
             "sideBrushDuty: Option<float32>",
         ),
         wire_verified=True,
-        codec_enabled=False,
         evidence=(
             "Matic Android 1.151.0 native Option<float32> encoder fields and "
-            "exact target; disabled because hardware-safe ranges are unproven"
+            "exact target; not live-tested"
         ),
     ),
     _spec(
@@ -1514,7 +1494,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "BuildPartitionCommand",
-        unsafe=True,
         target="build_regions",
     ),
     _spec(
@@ -1523,7 +1502,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "EditRoomsCommand",
-        unsafe=True,
         target="rename_area_command",
     ),
     _spec(
@@ -1532,7 +1510,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "NoGoZoneEdit",
-        unsafe=True,
         target="nogo_command",
     ),
     _spec(
@@ -1541,7 +1518,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "DriveOnlyZoneEdit",
-        unsafe=True,
         target="nogo_command",
     ),
     _spec(
@@ -1550,7 +1526,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "StairEdit",
-        unsafe=True,
         target="stair_command",
     ),
     _spec(
@@ -1559,7 +1534,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "SemanticsOverrideCommand",
-        unsafe=True,
         target="semantics_override",
     ),
     _spec(
@@ -1568,7 +1542,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "EditSinkSummonLocationCommand",
-        unsafe=True,
         target="edit_sink_summon_location",
     ),
     _spec(
@@ -1577,7 +1550,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "FloorCommand.Canonicalize",
-        unsafe=True,
         target="floor_command",
     ),
     _spec(
@@ -1586,7 +1558,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "FloorCommand.Rename",
-        unsafe=True,
         target="floor_command",
     ),
     _spec(
@@ -1595,7 +1566,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.DESTRUCTIVE,
         MapEnvironmentCommand,
         "PersistenceCommand.Clear",
-        unsafe=True,
         target="map_command",
     ),
     _spec(
@@ -1604,7 +1574,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.DESTRUCTIVE,
         MapEnvironmentCommand,
         "PersistenceCommand.ClearMap",
-        unsafe=True,
         target="map_command",
     ),
     _spec(
@@ -1613,7 +1582,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         MapEnvironmentCommand,
         "PersistenceCommand.RestoreMap",
-        unsafe=True,
         target="map_command",
     ),
     _spec(
@@ -1622,7 +1590,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.SENSITIVE,
         MapEnvironmentCommand,
         "PersistenceCommand.UploadMapForDebug",
-        unsafe=True,
         target="map_command",
     ),
     _spec(
@@ -1631,7 +1598,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.DESTRUCTIVE,
         MapEnvironmentCommand,
         "ClearRgbWeightsCommand",
-        unsafe=True,
         payload=b"",
         target="clear_rgb_weights_command",
         wire_verified=True,
@@ -1646,7 +1612,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.SENSITIVE,
         WifiCommand,
         "WifiScanCommand",
-        unsafe=True,
         payload=b"",
         target="wifi_scan_command",
         wire_verified=True,
@@ -1661,7 +1626,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         WifiCommand,
         "WifiUpdateCommand.Connect",
-        unsafe=True,
         fields=("ssid: String", "passphrase: Option<String>"),
         target="wifi_update_command",
     ),
@@ -1671,7 +1635,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.DESTRUCTIVE,
         WifiCommand,
         "WifiUpdateCommand.Forget",
-        unsafe=True,
         fields=("ssid: String",),
         target="wifi_update_command",
     ),
@@ -1681,7 +1644,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         DeviceCommand,
         "NewBotNameRequest",
-        unsafe=True,
         fields=("newName: String",),
         target="new_bot_name",
     ),
@@ -1691,7 +1653,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.SENSITIVE,
         DeviceCommand,
         "DiscoverableRequest",
-        unsafe=True,
         fields=("Enable(durationSeconds: u64) | Disable",),
         target="set_device_discoverable",
     ),
@@ -1701,7 +1662,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         DeviceCommand,
         "NewMopRollCommand",
-        unsafe=True,
         fields=("enabled: bool",),
         target="new_mop_roll_override_command",
     ),
@@ -1711,7 +1671,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.DESTRUCTIVE,
         DeviceCommand,
         "ClearCalibrationCommand",
-        unsafe=True,
         payload=b"",
         target="clear_online_calib_command",
         wire_verified=True,
@@ -1726,7 +1685,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.DESTRUCTIVE,
         DeviceCommand,
         "ConfigureShippingCommand",
-        unsafe=True,
         fields=("retainUserData: bool",),
         target="configure_shipping_command",
         wire_verified=True,
@@ -1741,7 +1699,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         SettingsCommand,
         "ChildLockEnableCommand",
-        unsafe=True,
         target=_BINARY_SETTING_TARGETS[SettingAction.CHILD_LOCK],
         wire_verified=True,
         live_verified=True,
@@ -1757,7 +1714,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         SettingsCommand,
         "PetWasteEnableCommand",
-        unsafe=True,
         target=_BINARY_SETTING_TARGETS[SettingAction.PET_WASTE_AVOIDANCE],
         wire_verified=True,
         live_verified=True,
@@ -1773,7 +1729,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         SettingsCommand,
         "VoiceEnableCommand",
-        unsafe=True,
         target=_BINARY_SETTING_TARGETS[SettingAction.VOICE],
         wire_verified=True,
         live_verified=True,
@@ -1789,7 +1744,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.SENSITIVE,
         SettingsCommand,
         "AutoRecordVoiceEnableCommand",
-        unsafe=True,
         fields=("enabled: bool",),
         target="auto_record_voice_enabled_command",
     ),
@@ -1799,7 +1753,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.SENSITIVE,
         SettingsCommand,
         "MatterPairingEnableCommand",
-        unsafe=True,
         fields=("enabled: bool",),
         target="matter_pairing_command",
     ),
@@ -1809,7 +1762,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         SettingsCommand,
         "UserRequestedPreviewEnableCommand",
-        unsafe=True,
         fields=("enabled: bool",),
         target="request_preview_release_command",
     ),
@@ -1819,7 +1771,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         SettingsCommand,
         "JukeboxState",
-        unsafe=True,
         fields=("track: Option<OhHanukkah | DeckTheHalls | JingleBells>",),
         target="jukebox_command",
     ),
@@ -1829,7 +1780,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         ScheduleCommand,
         "EditScheduleCommand.AddOrModify",
-        unsafe=True,
         fields=("event: AddOrModifyScheduleEvent",),
         target="edit_schedule",
     ),
@@ -1839,7 +1789,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.DESTRUCTIVE,
         ScheduleCommand,
         "EditScheduleCommand.Remove",
-        unsafe=True,
         fields=("key: ScheduleEventKey(missionId: u32, eventId: UUID)",),
         target="edit_schedule",
     ),
@@ -1849,7 +1798,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         ScheduleCommand,
         "EditScheduleCommand.Toggle",
-        unsafe=True,
         fields=("key: ScheduleEventKey(missionId: u32, eventId: UUID)",),
         target="edit_schedule",
     ),
@@ -1859,7 +1807,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         ScheduleCommand,
         "GenerateSuggestedScheduleCommand",
-        unsafe=True,
         payload=b"",
         target="generate_suggested_schedule",
         wire_verified=True,
@@ -1874,7 +1821,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         ScheduleCommand,
         "EditSinkSummonScheduleCommand.AddOrModify",
-        unsafe=True,
         fields=("event: SinkSummonScheduleEvent",),
         target="edit_sink_summon_schedule",
     ),
@@ -1884,7 +1830,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.DESTRUCTIVE,
         ScheduleCommand,
         "EditSinkSummonScheduleCommand.Remove",
-        unsafe=True,
         fields=("key: SinkSummonScheduleEventKey(missionId: u32, eventId: UUID)",),
         target="edit_sink_summon_schedule",
     ),
@@ -1894,7 +1839,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.SENSITIVE,
         MediaCommand,
         "RecordingCommand.Enabled",
-        unsafe=True,
         fields=("enabled: bool",),
         target="recording_command",
     ),
@@ -1904,7 +1848,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.SENSITIVE,
         MediaCommand,
         "RollingRecordingConfigKind",
-        unsafe=True,
         fields=("Enabled(confirmForEach: bool) | Disabled",),
         target="toggle_rolling_recordings",
     ),
@@ -1914,7 +1857,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.SENSITIVE,
         MediaCommand,
         "RecordingCommand.FlushRollingBuffer",
-        unsafe=True,
         fields=("no arguments (nested RecordingCommand variant)",),
         target="recording_command",
     ),
@@ -1924,7 +1866,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.SENSITIVE,
         MediaCommand,
         "ConfirmRecordingCommand save",
-        unsafe=True,
         fields=("id: u64", "action: Save"),
         target="recording_upload_confirmation",
     ),
@@ -1934,7 +1875,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.DESTRUCTIVE,
         MediaCommand,
         "ConfirmRecordingCommand delete",
-        unsafe=True,
         fields=("id: u64", "action: Delete"),
         target="recording_upload_confirmation",
     ),
@@ -1944,7 +1884,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.SENSITIVE,
         TelemetryCommand,
         "UploaderConfigCommand",
-        unsafe=True,
         fields=("optIn: bool",),
         target="uploader_config_command",
     ),
@@ -1954,7 +1893,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.SENSITIVE,
         TelemetryCommand,
         "UserTunnelSshPermissionCommand",
-        unsafe=True,
         fields=("enabled: bool",),
         target="user_tunnel_ssh_permission_command",
     ),
@@ -1964,7 +1902,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.SENSITIVE,
         TelemetryCommand,
         "PushNotificationSubscriptionCommand",
-        unsafe=True,
         fields=("deviceId: String", "appBundle: String"),
         target="subscribe_push_notifications",
     ),
@@ -1974,7 +1911,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.DESTRUCTIVE,
         LifecycleCommand,
         "UpdateBotCommand",
-        unsafe=True,
         payload=bytes.fromhex("0a00"),
         target="update_command",
         wire_verified=True,
@@ -1989,7 +1925,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.DESTRUCTIVE,
         LifecycleCommand,
         "ShutdownCommand.Reboot",
-        unsafe=True,
         payload=bytes.fromhex("0a00"),
         target="reboot_command",
         wire_verified=True,
@@ -2004,7 +1939,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.DESTRUCTIVE,
         LifecycleCommand,
         "ShutdownCommand.ShutDown",
-        unsafe=True,
         payload=bytes.fromhex("1200"),
         target="reboot_command",
         wire_verified=True,
@@ -2039,8 +1973,7 @@ class CommandRegistry:
         }
         if unavailable_codecs:
             raise ValueError(
-                "codecs require enabled WIRE_VERIFIED evidence: "
-                f"{sorted(unavailable_codecs)}"
+                f"codecs require WIRE_VERIFIED evidence: {sorted(unavailable_codecs)}"
             )
         missing_codecs = {
             spec.key
@@ -2160,6 +2093,7 @@ COMMAND_REGISTRY = CommandRegistry(
         "coverage.reprioritize": _VerifiedReprioritizeCoverageCodec(),
         "coverage.stain_mode": _VerifiedStainCoverageCodec(),
         "cleaning.manual": _VerifiedManualCleanCodec(),
+        "raw_motors.setpoints": _VerifiedRawMotorCodec(),
         "map.clear_rgb_weights": _VerifiedEmptyMapCodec(
             MapEnvironmentAction.CLEAR_RGB_WEIGHTS,
             "clear_rgb_weights_command",

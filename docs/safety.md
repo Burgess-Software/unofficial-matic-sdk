@@ -1,63 +1,44 @@
-# Control safety model
+# Control behavior and caller responsibility
 
-## Trust requirements
+## Direct command model
 
-Commands require authenticated TLS with either the Matician trust chain and
-robot identity checks or an explicitly confirmed per-device DER-certificate
-SHA-256 pin. The diagnostic insecure read mode cannot construct a command
-transport or carry authentication metadata; it is limited to unauthenticated
-discovery.
+Every enabled typed command is a direct call. The SDK has no confirmation
+phrases, capability objects, arming step, expiring permissions, command
+watchdog, velocity clamp, automatic zero command, or automatic Stop.
 
-These checks are cooperative API guardrails, not a sandbox for untrusted Python
-code. `MaticClient` keeps its authenticated transport private, and the
-documented top-level API has no arbitrary-payload method. Code running in the
-same process can still import private implementation modules, read credentials
-available to that process, or implement the protocol itself. Do not give
-untrusted plugins access to the SDK process or BotToken.
+The caller is responsible for deciding whether a command is appropriate and
+for operating the robot safely. Risk labels in the command registry are
+descriptive metadata only; they do not block or authorize execution.
 
-## Risk classes and gates
+The SDK still requires:
 
-The command ledger classifies commands by consequence:
+- authenticated TLS with a verified robot identity;
+- an explicitly selected compatible protocol version;
+- an exact, registered wire codec for the requested command; and
+- valid values for the command's proven protobuf field types.
 
-- **Stationary:** Stop, StayPut, and Pause.
-- **Motion:** Resume, Dock, exploration, navigation, coverage, manual cleaning,
-  and joystick control.
-- **Unsafe:** raw actuation; network or device mutation; map edits; persistent
-  settings and schedules; sensitive media, diagnostics, and support access;
-  updater, reboot, and shutdown.
+Those requirements prevent sending credentials to an unverified endpoint or
+inventing unknown wire data. They are protocol and authentication boundaries,
+not operator-safety interlocks.
 
-Stationary and motion commands have no capability or confirmation gate. A
-method call sends immediately once TLS identity, protocol version, and the
-command's proven codec have been validated.
+Commands whose encoding is incomplete remain unavailable because the SDK
+cannot construct their payload reliably. The exact raw-motor codec is
+registered and direct; the SDK applies no device-specific range limits to
+those setpoints.
 
-Enabled unsafe commands still require a short-lived `UnsafeControls`
-capability created with this exact warning confirmation:
+## Delivery behavior
 
-```text
-I understand these controls can damage the robot or its surroundings.
-```
-
-Trace calibration is classified as raw actuation and therefore requires
-`UnsafeControls`. Raw-motor encoding has no registered codec because
-hardware-safe ranges are not proven.
-No raw-actuation, destructive, network-changing, update, reboot, or shutdown
-command has been live-tested by this SDK.
-
-The [command verification ledger](command-verification.md) records codec proof
-and live-delivery evidence separately from risk. Joystick, navigation, Dock,
-and normal coverage have bounded live-delivery evidence. Navigation-and-wait,
-navigation-and-explore, reprioritization, and stain mode do not.
-
-Commands with an unknown outcome are not retried automatically. Audit records
-created by an explicitly supplied `JsonlAuditLog` contain the local request ID,
-command kind, timestamps, protocol version, acknowledgement, and observed
-effect, but never authorization material. `MaticClient` currently uses the
-no-op audit sink and does not write a log automatically.
+Each command method sends one request. An ambiguous command outcome is not
+retried automatically. Audit records created through an explicitly supplied
+`JsonlAuditLog` contain the local request ID, command kind, timestamps,
+protocol version, acknowledgement, and observed effect, but never
+authentication material. `MaticClient` uses the no-op audit sink unless a
+caller constructs a `CommandExecutor` with another sink.
 
 ## Direct joystick control
 
-The joystick protobuf body and Hermes channel envelope are exact. Call
-`robot.commands.joystick()` to send one velocity command:
+The joystick protobuf body and Hermes channel envelope are exact. Each call
+sends one velocity command:
 
 ```python
 async def drive(robot):
@@ -65,14 +46,22 @@ async def drive(robot):
     await robot.commands.joystick(0.0, 0.0)
 ```
 
-The SDK does not add a background publishing loop, velocity clamp, expiring
-input lease, dead-man timer, automatic zero command, or automatic Stop.
-Finite-value and float32-range validation in the wire codec still applies.
-The caller controls command timing and decides whether to send zero or Stop.
+The SDK does not repeat the velocity in the background, expire stale input, or
+send zero or Stop when the client closes. The caller controls command timing
+and any desired stopping behavior. Finite-value and float32-range validation
+in the wire codec still applies.
 
 A bounded test harness on 2026-07-28 produced 25 acknowledged
 velocity/zero/Stop sends with no failures and a docked-to-ready state
 transition. The zero and Stop were explicit test-harness commands, not
-automatic SDK behavior. This establishes live delivery and an observed robot
-state effect; it does not establish precise distance, motor behavior, or a
-robot-side stale-command timeout.
+automatic SDK behavior.
+
+## Trust boundary
+
+The diagnostic insecure read mode cannot construct a command transport or
+carry authentication metadata. The normal command API requires verified TLS.
+
+These are cooperative API boundaries, not a sandbox for untrusted Python code.
+Code running in the same process can read credentials available to that
+process, import private modules, or implement the protocol itself. Do not give
+untrusted plugins access to the SDK process or BotToken.

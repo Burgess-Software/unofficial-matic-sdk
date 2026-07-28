@@ -30,6 +30,9 @@ service without a cloud relay.
 - Run normal room coverage through a typed API exercised against a real robot.
 - Reprioritize an active plan or clean a drawn dry-stain/wet-spill area through
   typed, wire-verified APIs.
+- Send direct cleaning-mechanism setpoints through the wire-verified raw-motor
+  codec; this path has not been exercised live and applies no device-specific
+  range limits.
 
 The [command verification ledger](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/command-verification.md) shows exactly
 which controls were exercised live, which have offline wire proof, and which
@@ -310,6 +313,28 @@ input, send zero velocity, or issue Stop automatically. Send every command your
 control loop requires, including an explicit zero or `robot.commands.stop()`
 when that is the behavior you want.
 
+### Send cleaning-mechanism setpoints
+
+The raw-motor codec exposes vacuum RPM and sweeper, mopper, cleaning-head, and
+side-brush setpoints directly:
+
+```python
+async def set_cleaning_motors(
+    robot,
+    *,
+    vacuum_rpm: float,
+    sweeper_duty: float,
+) -> None:
+    await robot.commands.set_raw_motors(
+        vacuum_rpm=vacuum_rpm,
+        sweeper_duty=sweeper_duty,
+    )
+```
+
+Each call sends one `motor_command`. The wire format is verified, but this path
+has not been exercised live and the SDK applies no device-specific range
+limits.
+
 ### Navigate or start coverage
 
 These methods use mission-relative coordinates and map UUIDs. Choose the one
@@ -420,16 +445,14 @@ Use `snapshot.region_ids` to show the currently scheduled rooms. Use
 
 ### Change a supported preference
 
-Persistent settings require a separate `UnsafeControls` capability. Running
-this example requests child lock to be enabled. Change the boolean only when
-you intend to change that setting:
+Persistent settings are direct calls too. This example requests child lock to
+be enabled. Change the boolean only when you intend to change that setting:
 
 ```python
 import asyncio
 
-from matic_sdk import MaticClient, MaticConfig, TlsConfig, UnsafeControls
+from matic_sdk import MaticClient, MaticConfig, TlsConfig
 from matic_sdk.models.control import SettingAction
-from matic_sdk.safety import UNSAFE_CONFIRMATION
 
 
 async def enable_child_lock() -> None:
@@ -441,15 +464,10 @@ async def enable_child_lock() -> None:
     async with await MaticClient.connect_from_store(
         "living-room", config
     ) as robot:
-        unsafe = UnsafeControls.arm(UNSAFE_CONFIRMATION, ttl_seconds=30)
-        try:
-            await robot.commands.set_binary_setting(
-                SettingAction.CHILD_LOCK,
-                True,
-                unsafe_controls=unsafe,
-            )
-        finally:
-            unsafe.disarm()
+        await robot.commands.set_binary_setting(
+            SettingAction.CHILD_LOCK,
+            True,
+        )
 
 
 asyncio.run(enable_child_lock())
@@ -460,10 +478,14 @@ wrote each setting's already-observed value, so delivery was verified without
 claiming that a setting transition was tested.
 
 See the [full command ledger](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/command-verification.md) and
-[safety model](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/safety.md) before using additional codecs. Unknown,
-partially reconstructed, or policy-disabled commands fail before network I/O.
+[caller-responsibility notes](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/safety.md) before using additional codecs. Unknown,
+partially reconstructed commands fail before network I/O.
 The documented top-level API exposes no arbitrary-payload escape hatch, and an
 ambiguous command outcome is never retried automatically.
+
+All enabled typed commands are direct calls. The SDK does not require
+confirmation phrases or capability objects; callers are responsible for using
+commands safely and understanding their effects.
 
 ## Safety and privacy
 
@@ -484,7 +506,8 @@ ambiguous command outcome is never retried automatically.
 - Maps and voxels are decoded from captures; this is not a live map dashboard.
 - Each joystick call sends exactly one command; the SDK does not provide a
   background resend loop, dead-man lease, automatic zero, or automatic Stop.
-  Raw-motor sending is disabled until hardware-safe ranges are known.
+- Raw-motor setpoints are direct and wire-verified but have not been exercised
+  live; the SDK applies no device-specific range limits.
 - The portal-backed remote transport is experimental and not currently
   reliable; normal operation is local-network only.
 - The SDK does not provide firmware images, root access, a filesystem, or an
@@ -493,10 +516,10 @@ ambiguous command outcome is never retried automatically.
 ## Documentation
 
 - [Command verification ledger](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/command-verification.md)
-- [Control safety model](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/safety.md)
+- [Control behavior and caller responsibility](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/safety.md)
 - [Protocol notes](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/protocol.md)
 - [Research method](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/research-method.md)
-- [Capability details](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/status.md)
+- [SDK status](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/status.md)
 - [Experimental remote transport](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/remote.md)
 
 ## Development

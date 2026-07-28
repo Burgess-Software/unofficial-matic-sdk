@@ -25,7 +25,6 @@ from matic_sdk.models.control import (
     CleaningFloor,
     CleaningIntensity,
     CommandFamily,
-    CommandRisk,
     CoverageAction,
     CoverageBehavior,
     CoverageCleaningMode,
@@ -85,11 +84,6 @@ from matic_sdk.protocol.wire import (
     encode_bytes_field,
     integer_values,
     parse_fields,
-)
-from matic_sdk.safety import (
-    UNSAFE_CONFIRMATION,
-    UnsafeControlRequired,
-    UnsafeControls,
 )
 from matic_sdk.transport.commands import (
     HERMES_TARGET_HEADER,
@@ -188,21 +182,6 @@ def test_registry_documents_every_recovered_command_family() -> None:
     assert expected_keys <= COMMAND_REGISTRY.specs.keys()
 
 
-def test_hazardous_registry_specs_always_require_unsafe_controls() -> None:
-    hazardous = {
-        CommandRisk.PERSISTENT,
-        CommandRisk.SENSITIVE,
-        CommandRisk.RAW_ACTUATION,
-        CommandRisk.DESTRUCTIVE,
-    }
-
-    assert all(
-        spec.requires_unsafe_controls
-        for spec in COMMAND_SPECS
-        if spec.risk in hazardous
-    )
-
-
 def test_default_registry_exposes_only_verified_codecs() -> None:
     available = {spec.key for spec in COMMAND_SPECS if spec.codec_available}
     assert available == {
@@ -219,6 +198,7 @@ def test_default_registry_exposes_only_verified_codecs() -> None:
         "navigation.navigate",
         "navigation.navigate_and_explore",
         "navigation.navigate_and_wait",
+        "raw_motors.setpoints",
         "schedule.generate_suggested",
         "settings.child_lock",
         "settings.pet_waste_avoidance",
@@ -242,7 +222,7 @@ def test_default_registry_exposes_only_verified_codecs() -> None:
         if spec.evidence_level is CodecEvidenceLevel.WIRE_VERIFIED
     }
     assert len(wire_verified) == 30
-    assert wire_verified - available == {"raw_motors.setpoints"}
+    assert wire_verified == available
     live_verified = {spec.key for spec in COMMAND_SPECS if spec.live_delivery_verified}
     assert live_verified == {
         "coverage.normal",
@@ -317,15 +297,6 @@ def test_registry_refuses_codec_without_wire_verified_evidence() -> None:
 def test_registry_refuses_wire_verified_spec_without_codec() -> None:
     with pytest.raises(ValueError, match="require registered codecs"):
         CommandRegistry((COMMAND_REGISTRY.spec_for("user.stop"),), codecs={})
-
-
-def test_registry_refuses_codec_for_policy_disabled_wire_format() -> None:
-    raw_spec = COMMAND_REGISTRY.spec_for("raw_motors.setpoints")
-    with pytest.raises(ValueError, match="enabled WIRE_VERIFIED"):
-        CommandRegistry(
-            (raw_spec,),
-            codecs={"raw_motors.setpoints": _VerifiedRawMotorCodec()},
-        )
 
 
 def test_registry_rejects_codec_target_that_diverges_from_spec() -> None:
@@ -1282,8 +1253,6 @@ def test_raw_motor_codec_matches_native_fixed32_fields(
     command: RawMotorCommand,
     expected_hex: str,
 ) -> None:
-    # Keep the recovered wire format under test without registering a public
-    # encoder before hardware-safe ranges are known.
     encoded = _VerifiedRawMotorCodec().encode(command)
     assert encoded == EncodedCommand(bytes.fromhex(expected_hex), "motor_command")
 
@@ -1296,9 +1265,11 @@ def test_raw_motor_codec_rejects_non_float32_values(value: object) -> None:
         )
 
 
-def test_raw_motor_command_remains_fail_closed_without_safe_ranges() -> None:
-    with pytest.raises(UnsupportedCommandCodec):
-        encode_command(RawMotorCommand(vacuum_rpm=1.0), protocol_version=25)
+def test_raw_motor_command_encodes_through_default_registry() -> None:
+    assert encode_command(
+        RawMotorCommand(vacuum_rpm=1.0),
+        protocol_version=25,
+    ) == EncodedCommand(bytes.fromhex("150000803f"), "motor_command")
 
 
 @pytest.mark.parametrize(
@@ -1503,26 +1474,46 @@ async def test_client_sends_wire_verified_stop_through_hermes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unsafe_command_needs_explicit_capability() -> None:
+async def test_raw_motor_command_sends_directly() -> None:
     transport = AcknowledgingTransport()
     executor = CommandExecutor(
         transport,
         protocol_version=25,
         tls_identity_verified=True,
     )
-    command = RawMotorCommand(vacuum_rpm=100.0)
-    with pytest.raises(UnsafeControlRequired):
-        await executor.execute(command)
-    assert transport.commands == []
+    receipt = await executor.execute(RawMotorCommand(vacuum_rpm=100.0))
 
-    capability = UnsafeControls.arm(UNSAFE_CONFIRMATION)
-    with pytest.raises(UnsupportedCommandCodec):
-        await executor.execute(command, unsafe_controls=capability)
-    assert transport.commands == []
+    assert receipt.transport_acknowledged
+    assert transport.commands == [
+        EncodedCommand(bytes.fromhex("150000c842"), "motor_command")
+    ]
 
 
 @pytest.mark.asyncio
-async def test_motion_command_sends_without_a_capability() -> None:
+async def test_raw_motor_convenience_method_sends_directly() -> None:
+    transport = AcknowledgingTransport()
+    executor = CommandExecutor(
+        transport,
+        protocol_version=25,
+        tls_identity_verified=True,
+    )
+
+    receipt = await executor.set_raw_motors(
+        sweeper_duty=0.5,
+        side_brush_duty=-0.25,
+    )
+
+    assert receipt.transport_acknowledged
+    assert transport.commands == [
+        EncodedCommand(
+            bytes.fromhex("1d0000003f3d000080be"),
+            "motor_command",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_motion_command_sends_directly() -> None:
     transport = AcknowledgingTransport()
     executor = CommandExecutor(
         transport,
@@ -1595,7 +1586,7 @@ async def test_motion_convenience_methods_route_typed_commands_once() -> None:
 
 
 @pytest.mark.asyncio
-async def test_trace_calibration_requires_only_unsafe_capability() -> None:
+async def test_trace_calibration_sends_directly() -> None:
     transport = AcknowledgingTransport()
     executor = CommandExecutor(
         transport,
@@ -1603,16 +1594,8 @@ async def test_trace_calibration_requires_only_unsafe_capability() -> None:
         tls_identity_verified=True,
     )
     command = UserCommand(UserAction.TRACE_CALIBRATION, mission_id=42)
-    unsafe = UnsafeControls.arm(UNSAFE_CONFIRMATION)
 
-    with pytest.raises(UnsafeControlRequired):
-        await executor.execute(command)
-    assert transport.commands == []
-
-    receipt = await executor.execute(
-        command,
-        unsafe_controls=unsafe,
-    )
+    receipt = await executor.execute(command)
     assert receipt.transport_acknowledged
     assert transport.commands == [
         EncodedCommand(
@@ -1795,9 +1778,8 @@ async def test_jsonl_audit_is_mode_0600_and_contains_no_command_secrets(
         ssid="household-network",
         passphrase="network-password",
     )
-    capability = UnsafeControls.arm(UNSAFE_CONFIRMATION)
     with pytest.raises(UnsupportedCommandCodec):
-        await executor.execute(command, unsafe_controls=capability)
+        await executor.execute(command)
 
     assert stat.S_IMODE(audit_path.stat().st_mode) == 0o600
     contents = audit_path.read_text(encoding="utf-8")

@@ -32,7 +32,8 @@ not imply that its protobuf codec or live behavior has been verified.
 
 The client has optional direct setpoints for vacuum RPM, sweeper duty, mopper
 duty, cleaning-head position and side-brush duty. These bypass normal cleaning
-intent and always belong to the unsafe capability.
+intent. Their exact codec is registered directly, applies no device-specific
+range limits, and has not been exercised live.
 
 ## Codec rule
 
@@ -45,19 +46,18 @@ stream.
 
 ## Verification state
 
-The registry currently contains 65 intents. Thirty have exact protobuf
-formats and Hermes targets and therefore carry `wire_verified` evidence;
-29 have registered codecs. Raw-motor bytes are wire-verified but remain
-policy-disabled because evidence-backed hardware ranges are unknown. The other
-35 expose static type or field evidence but no codec. See the [complete command
-ledger](command-verification.md) for every key, target, gate, and current
-blocker.
+The registry currently contains 65 intents. Thirty have exact protobuf formats
+and Hermes targets, carry `wire_verified` evidence, and have registered codecs.
+The raw-motor codec is included and applies no device-specific range limits.
+The other 35 expose static type or field evidence but no codec. See the
+[complete command ledger](command-verification.md) for every key, target, risk
+label, and current blocker.
 
 Wire verification and live delivery are separate facts. A wire-verified format
 means its inner protobuf, target, and `ChannelRequest` envelope are exact; it
-does not claim that this SDK has sent the command or observed its effect.
-Motion commands have no capability gate. Enabled hazardous encoders require
-`UnsafeControls`; trace calibration is in that category. A direct
+does not claim that this SDK has sent the command or observed its effect. All
+enabled typed commands are direct calls with no capability or confirmation
+gate. Risk labels are informational. A
 `robot.commands.joystick(linear_mps, angular_rad_s)` call sends exactly one
 velocity command without a background watchdog or automatic Stop.
 
@@ -88,5 +88,6 @@ reboot, or shutdown command was live-tested.
 
 The reusable verifier is
 [`tools/live_verify_safe_commands.py`](../tools/live_verify_safe_commands.py).
-It has no arbitrary channel or raw-payload option and refuses to run without
-the exact confirmation phrase and a parked-state preflight.
+It has no arbitrary channel or raw-payload option and performs a parked-state
+preflight before its bounded checks. The SDK command methods themselves do not
+perform this preflight.

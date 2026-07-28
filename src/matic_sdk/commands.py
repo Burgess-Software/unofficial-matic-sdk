@@ -28,6 +28,7 @@ from matic_sdk.models.control import (
     NavigationMode,
     ObservedEffect,
     ObservedEffectStatus,
+    RawMotorCommand,
     ReprioritizeAction,
     ReprioritizeCoverageCommand,
     SettingAction,
@@ -44,7 +45,6 @@ from matic_sdk.protocol.commands import (
     EncodedCommand,
     ensure_protocol_compatible,
 )
-from matic_sdk.safety import UnsafeControls, require_unsafe_controls
 
 _REDACTED = "[REDACTED]"
 _SENSITIVE_KEY_PARTS = (
@@ -189,14 +189,12 @@ class CommandExecutor:
         self,
         command: ControlCommand,
         *,
-        unsafe_controls: UnsafeControls | None = None,
         observe: ObservationCallback | None = None,
     ) -> CommandReceipt:
         """Send exactly once and return delivery/effect results separately."""
 
         return await self._execute_guarded(
             command,
-            unsafe_controls=unsafe_controls,
             observe=observe,
         )
 
@@ -204,7 +202,6 @@ class CommandExecutor:
         self,
         command: ControlCommand,
         *,
-        unsafe_controls: UnsafeControls | None = None,
         observe: ObservationCallback | None = None,
     ) -> CommandReceipt:
         spec = self._registry.spec_for(command)
@@ -224,10 +221,6 @@ class CommandExecutor:
                 raise UnverifiedCommandTransport(
                     "commands require verified robot TLS identity"
                 )
-            require_unsafe_controls(
-                spec.requires_unsafe_controls,
-                unsafe_controls,
-            )
             encoded = self._registry.encode(
                 command,
                 protocol_version=protocol_version,
@@ -429,14 +422,30 @@ class CommandExecutor:
         self,
         action: SettingAction,
         enabled: bool,
-        *,
-        unsafe_controls: UnsafeControls,
     ) -> CommandReceipt:
         """Set an exact, allowlisted boolean preference."""
 
+        return await self.execute(SettingsCommand(action, enabled))
+
+    async def set_raw_motors(
+        self,
+        *,
+        vacuum_rpm: float | None = None,
+        sweeper_duty: float | None = None,
+        mopper_duty: float | None = None,
+        head_position: float | None = None,
+        side_brush_duty: float | None = None,
+    ) -> CommandReceipt:
+        """Send one direct setpoint command to the cleaning mechanisms."""
+
         return await self.execute(
-            SettingsCommand(action, enabled),
-            unsafe_controls=unsafe_controls,
+            RawMotorCommand(
+                vacuum_rpm=vacuum_rpm,
+                sweeper_duty=sweeper_duty,
+                mopper_duty=mopper_duty,
+                head_position=head_position,
+                side_brush_duty=side_brush_duty,
+            )
         )
 
 
