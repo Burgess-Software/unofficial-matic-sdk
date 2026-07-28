@@ -5,6 +5,10 @@ from __future__ import annotations
 from matic_sdk.client import MaticClient
 from matic_sdk.commands import CommandExecutor, JsonlAuditLog
 from matic_sdk.config import MaticConfig, SecurityMode, TlsConfig
+from matic_sdk.coverage import (
+    CoverageDecodeError,
+    ReprioritizationSnapshot,
+)
 from matic_sdk.credentials import BotToken, CredentialStore
 from matic_sdk.models.control import (
     CleaningFloor,
@@ -48,6 +52,7 @@ __all__ = [
     "CoverageBehavior",
     "CoverageCleaningMode",
     "CoverageCommand",
+    "CoverageDecodeError",
     "CoverageGoalCleaningMode",
     "CoverageGoalSetting",
     "CoverageGoalSpec",
@@ -65,6 +70,7 @@ __all__ = [
     "NavigationCommand",
     "NavigationMode",
     "RawCollectionEvent",
+    "ReprioritizationSnapshot",
     "ReprioritizeAction",
     "ReprioritizeCoverageCommand",
     "SecurityMode",

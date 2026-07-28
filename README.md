@@ -405,31 +405,38 @@ those input checks.
 ### Reprioritize active coverage
 
 `reprioritize_coverage()` implements the official Prioritize and Skip
-transformations. It needs the complete active `CoverageGoals` plan and current
-coverage-session UUID so surviving goal IDs and cleaning specs remain intact:
+transformations. The live decoder joins the robot's active session and coverage
+plan by mission ID, preserving the goal IDs and cleaning specs the command must
+send back:
 
 ```python
-from uuid import UUID
-
 from matic_sdk import ReprioritizeAction
 
 
-async def prioritize_next_region(robot, motion, current_goals) -> None:
+async def prioritize_next_region(robot, motion, selected_region_id) -> None:
+    snapshot = await robot.reprioritization_snapshot(timeout=5.0)
+    if snapshot is None:
+        print("The robot does not have an active coverage session.")
+        return
+
+    if selected_region_id not in snapshot.region_ids:
+        raise ValueError("selected_region_id is not in the active plan")
+
     await robot.commands.reprioritize_coverage(
         action=ReprioritizeAction.PRIORITIZE,
-        mission_id=42,
-        goals=current_goals,
-        current_region_id=UUID("CURRENT_REGION_UUID"),
-        selected_region_id=UUID("REGION_TO_RUN_NEXT_UUID"),
-        current_session_id=UUID("COVERAGE_SESSION_UUID"),
+        mission_id=snapshot.mission_id,
+        goals=snapshot.goals,
+        current_region_id=snapshot.current_region_id,
+        selected_region_id=selected_region_id,
+        current_session_id=snapshot.current_session_id,
         motion_controls=motion,
     )
 ```
 
-Use `ReprioritizeAction.SKIP` to remove the current region block.
-The SDK does not yet provide a friendly live decoder that constructs
-`CoverageGoals`; callers must supply an exactly decoded active plan. The
-official Add and Redo reprioritization helpers are not exposed yet.
+Use `snapshot.region_ids` to show the currently scheduled rooms. Use
+`ReprioritizeAction.SKIP` to remove the current region block; Skip does not need
+`selected_region_id`. The read is safe while the robot is idle and returns
+`None`. The official Add and Redo reprioritization helpers are not exposed yet.
 
 ### Change a supported preference
 

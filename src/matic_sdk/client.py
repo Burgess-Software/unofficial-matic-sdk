@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import weakref
 from collections.abc import Iterable
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 from matic_sdk.collections import (
     CollectionManager,
@@ -31,6 +31,9 @@ from matic_sdk.safety import (
 from matic_sdk.telemetry import DEFAULT_CONTROL_FEEDBACK_TARGETS, TelemetrySession
 from matic_sdk.transport.commands import _HermesCommandTransport
 from matic_sdk.transport.h2 import H2Transport
+
+if TYPE_CHECKING:
+    from matic_sdk.coverage import ReprioritizationSnapshot
 
 HANDSHAKE_PATH = "/hermes.Hermes/Handshake"
 
@@ -166,6 +169,17 @@ class MaticClient:
         targets: Iterable[str] = DEFAULT_CONTROL_FEEDBACK_TARGETS,
     ) -> TelemetrySession:
         return TelemetrySession(self, targets)
+
+    async def reprioritization_snapshot(
+        self,
+        *,
+        timeout: float | None = None,  # noqa: ASYNC109 - public timeout setting
+    ) -> ReprioritizationSnapshot | None:
+        """Read a coherent active plan suitable for reprioritization."""
+
+        from matic_sdk.coverage import fetch_reprioritization_snapshot
+
+        return await fetch_reprioritization_snapshot(self, timeout=timeout)
 
     def teleop(
         self,
