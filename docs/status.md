@@ -46,12 +46,17 @@ Neither path retried an unknown outcome. Hermes acknowledged all six requests.
 The robot remained docked and the settings retained their prior values, so
 these checks verify delivery but do not claim an unobservable transition.
 
-The other 24 exact formats have offline wire evidence only. No motion-changing,
-raw-actuation, destructive, network-changing, update, reboot, or shutdown
-command was live-tested. Raw-motor encoding is not registered at all. Risk
-capabilities control whether an informed caller may send an enabled exact
-codec; they do not upgrade its evidence level. Joystick control is enabled only
-through `MaticClient.teleop()`; direct executor use remains blocked.
+On 2026-07-28, a watchdog-backed joystick test first sent a short 0.05 m/s
+sequence while docked, then sent 0.10 m/s for two seconds with input-lease
+refreshes. The longer sequence produced 25 acknowledged velocity/zero/Stop
+sends with no failures, and operating state changed from docked to ready.
+
+The other 23 exact formats have offline wire evidence only. No raw-actuation,
+destructive, network-changing, update, reboot, or shutdown command was
+live-tested. Raw-motor encoding is not registered at all. Risk capabilities
+control whether an informed caller may send an enabled exact codec; they do not
+upgrade its evidence level. Joystick control is enabled only through
+`MaticClient.teleop()`; direct executor use remains blocked.
 
 ## Firmware boundary
 

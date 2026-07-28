@@ -34,8 +34,10 @@ command was live-tested or that its physical effect is known. The
 [command verification ledger](command-verification.md) records those facts
 separately. Trace calibration requires both motion and unsafe capabilities.
 Raw-motor encoding has no registered codec because hardware-safe ranges are not
-proven. No motion-changing, raw-actuation, destructive, network-changing,
-update, reboot, or shutdown command has been live-tested by this SDK.
+proven. The watchdog-backed joystick path has bounded live-delivery evidence
+including a docked-to-ready state transition. No raw-actuation, destructive,
+network-changing, update, reboot, or shutdown command has been live-tested by
+this SDK.
 
 Commands with an unknown outcome are not retried automatically. Audit records
 contain the local request ID, command kind, timestamps, protocol version,
@@ -83,10 +85,11 @@ uses:
 - explicit zero velocity on release;
 - best-effort zero velocity followed by Stop on cancellation or disconnect.
 
-The SDK path and its local dead-man behavior are covered by automated tests, but
-joystick delivery and physical motion have not yet been live-validated against
-the robot. A Hermes acknowledgement would prove RPC delivery, not physical
-effect.
+The SDK path and its local dead-man behavior are covered by automated tests. A
+bounded test on 2026-07-28 produced 25 acknowledged velocity/zero/Stop sends
+with no failures and a docked-to-ready state transition. This establishes live
+delivery and an observed robot-state effect; it does not establish precise
+distance or motor behavior.
 
 This SDK cannot prove that the robot implements its own dead-man timeout. The
 operator must keep the robot in view and use a clear test area.

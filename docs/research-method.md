@@ -148,8 +148,8 @@ trace calibration requires both. Direct joystick execution remains blocked.
 The supported `MaticClient.teleop()` path connects the exact joystick encoder to
 the watchdog-backed session while retaining the executor's TLS, protocol,
 capability, audit, and no-retry boundaries. That local integration is
-automatically tested, but live delivery and physical behavior remain
-unvalidated.
+automatically tested. A bounded live test on 2026-07-28 additionally produced
+25 acknowledged sends with no failures and a docked-to-ready state transition.
 
 The SDK implementations of Stop, StayPut, Pause, child lock, pet-waste
 avoidance, and voice were exercised against an owner-authorized robot on
@@ -159,8 +159,10 @@ each same-value setting write once. Neither path retried an ambiguous result. A
 pinned TLS identity, authenticated handshake, one Hermes response per command,
 and gRPC status 0 established delivery. The robot stayed docked and each
 setting preserved its value, so no physical or setting transition was claimed.
-No motion-changing, raw-actuation, destructive, network-changing, update,
-reboot, or shutdown command was live-tested.
+On 2026-07-28, the watchdog-backed joystick path produced 25 acknowledged
+velocity/zero/Stop sends with no failures and a docked-to-ready state
+transition. No raw-actuation, destructive, network-changing, update, reboot, or
+shutdown command was live-tested.
 
 ## Firmware boundary
 

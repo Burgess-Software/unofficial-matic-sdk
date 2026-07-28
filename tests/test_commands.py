@@ -234,6 +234,7 @@ def test_default_registry_exposes_only_verified_codecs() -> None:
         "settings.child_lock",
         "settings.pet_waste_avoidance",
         "settings.voice",
+        "user.joystick",
         "user.pause",
         "user.stay_put",
         "user.stop",

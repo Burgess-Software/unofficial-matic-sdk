@@ -67,15 +67,18 @@ omitted rather than encoded as a zero-length bytes field. A successful unary
 RPC returns one `ChannelResponse`; its bytes field may itself be absent/default
 or populated.
 
-Six commands were delivered once by this SDK on 2026-07-22: Stop, StayPut,
-Pause, child lock, pet-waste avoidance, and voice. Stop used an initial one-shot
+Seven command intents have live delivery evidence. Six were delivered once on
+2026-07-22: Stop, StayPut, Pause, child lock, pet-waste avoidance, and voice.
+Stop used an initial one-shot
 check. A separate bounded verifier required parked telemetry, pre-read all
 setting values, wrote each setting's existing value, and sent the other five
 commands once each. Neither path retried an ambiguous outcome. The robot
 remained docked and the settings remained unchanged, so the evidence establishes
-delivery without manufacturing a state-transition claim. No motion-changing,
-raw-actuation, destructive, network-changing, update, reboot, or shutdown
-command was live-tested.
+delivery without manufacturing a state-transition claim. On 2026-07-28, a
+watchdog-backed joystick sequence produced 25 acknowledged velocity/zero/Stop
+sends with no failures and a docked-to-ready state transition. No raw-actuation,
+destructive, network-changing, update, reboot, or shutdown command was
+live-tested.
 
 The reusable verifier is
 [`tools/live_verify_safe_commands.py`](../tools/live_verify_safe_commands.py).

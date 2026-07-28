@@ -1321,10 +1321,12 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "UserCommand.Joystick(JoystickControl)",
         fields=("linearMetersPerSecond: float32", "angularRadiansPerSecond: float32"),
         wire_verified=True,
+        live_verified=True,
         evidence=(
             "Matic Android 1.151.0 native UserCommand::to_proto disassembly "
             "proves both nested field-2 envelopes and float32 fields 1 and 2; "
-            "not live-tested"
+            "watchdog-backed SDK delivery acknowledged with docked-to-ready "
+            "state transition 2026-07-28"
         ),
     ),
     _spec(

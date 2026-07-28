@@ -279,8 +279,9 @@ async def request_dock() -> None:
 asyncio.run(request_dock())
 ```
 
-Dock and the other motion-changing codecs have exact offline wire evidence but
-have not been exercised live by this SDK.
+Dock and the autonomous motion-changing codecs have exact offline wire evidence
+but have not been exercised live by this SDK. The watchdog-backed joystick path
+below has been acknowledged live through a docked-to-ready state transition.
 
 ### Drive with the watchdog-backed joystick
 

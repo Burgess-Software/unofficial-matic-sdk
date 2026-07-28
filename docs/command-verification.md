@@ -1,12 +1,13 @@
 # Command verification ledger
 
 This is the protocol-25 command boundary implemented by the SDK: 65 documented
-intents, 30 exact `wire_verified` formats, 29 registered codecs, and 6 commands
-delivered once by this SDK. `Wire / yes` means the protobuf body, Hermes target,
-and surrounding channel envelope are exact and the codec is registered. `Wire
-/ no` records an exact format disabled by safety policy. `Static type / no` or
-`Static fields / no` means the target and some client-side structure are known,
-but the SDK has no encoder and fails before network I/O.
+intents, 30 exact `wire_verified` formats, 29 registered codecs, and 7 command
+intents with live delivery evidence. `Wire / yes` means the protobuf body,
+Hermes target, and surrounding channel envelope are exact and the codec is
+registered. `Wire / no` records an exact format disabled by safety policy.
+`Static type / no` or `Static fields / no` means the target and some
+client-side structure are known, but the SDK has no encoder and fails before
+network I/O.
 
 The live column is independent of codec evidence. `Yes` records one bounded,
 acknowledged send on 2026-07-22, not proof of a physical transition. A safety
@@ -25,7 +26,7 @@ offline codecs have not been live-tested unless the row explicitly says yes.
 | `user.redo_coverage` | `user_command` | Wire / yes | No | `MotionControls` / motion | No motion-changing live test |
 | `user.resume_coverage` | `user_command` | Wire / yes | No | `MotionControls` / motion | No motion-changing live test |
 | `user.trace_calibration` | `user_command` | Wire / yes | No | `MotionControls` + `UnsafeControls` / raw actuation | Hazardous motion; offline wire proof only |
-| `user.joystick` | `user_command` | Wire / yes | No | `MotionControls` / motion | Available only through watchdog-backed `MaticClient.teleop()`; no live test |
+| `user.joystick` | `user_command` | Wire / yes | Yes | `MotionControls` / motion | A bounded forward sequence produced 25 acknowledged sends and a docked-to-ready state transition; zero plus Stop completed |
 | `navigation.navigate` | `user_command` | Wire / yes | No | `MotionControls` / motion | Exact offline coordinate transform and envelope; no live test |
 | `navigation.navigate_and_wait` | `user_command` | Wire / yes | No | `MotionControls` / motion | Exact fixed 900-second wait envelope; no live test |
 | `navigation.navigate_and_explore` | `user_command` | Wire / yes | No | `MotionControls` / motion | Exact NavigateTo plus Explore task envelope; no live test |
