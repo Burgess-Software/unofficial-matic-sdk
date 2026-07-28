@@ -122,13 +122,13 @@ hides; skipping those bytes would misalign every later color. The exported PLY
 uses 1.5 cm cells. This is an app-facing colored surface representation, not a
 claim of access to the robot's full SLAM volume, TSDF, ESDF, or triangle mesh.
 
-## Command evidence and safety boundary
+## Command wire evidence
 
 Static tracing recovered 65 command intents and their Hermes targets. Continued
 tracing through concrete conversion and generated Prost encoding paths, plus
 independent reconstruction and byte-level golden fixtures, produced 30 exact
-wire formats, 29 of which have enabled registry codecs. The public UniFFI
-variant numbers were not protobuf tags; the trace
+wire formats, all of which have registered codecs. The public UniFFI variant
+numbers were not protobuf tags; the trace
 followed their lift into Rust enum discriminants, concrete protocol types, and
 generated encoders.
 

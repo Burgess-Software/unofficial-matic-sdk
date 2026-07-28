@@ -124,7 +124,7 @@ class CodecEvidenceLevel(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class CommandSpec:
-    """Documented command variant and its evidence/safety classification."""
+    """Documented command variant and its evidence/risk classification."""
 
     key: str
     family: CommandFamily
