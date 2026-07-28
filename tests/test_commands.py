@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import stat
+import struct
 from base64 import b64decode
 from dataclasses import replace
 from pathlib import Path
@@ -231,6 +233,7 @@ def test_default_registry_exposes_only_verified_codecs() -> None:
     assert wire_verified - available == {"raw_motors.setpoints"}
     live_verified = {spec.key for spec in COMMAND_SPECS if spec.live_delivery_verified}
     assert live_verified == {
+        "navigation.navigate",
         "settings.child_lock",
         "settings.pet_waste_avoidance",
         "settings.voice",
@@ -430,21 +433,21 @@ def test_joystick_codec_rejects_values_outside_finite_float32(
     [
         (
             NavigationMode.NAVIGATE,
-            "121c221a0a110d000000c015000080bf22050d0000803f1205152a000000",
+            "121c221a0a110d000000c015000080bf220515000080bf1205152a000000",
         ),
         (
             NavigationMode.NAVIGATE_AND_WAIT,
-            "122722250a110d000000c015000080bf22050d0000803f1205152a000000"
+            "122722250a110d000000c015000080bf220515000080bf1205152a000000"
             "22090a070a030884071000",
         ),
         (
             NavigationMode.NAVIGATE_AND_EXPLORE,
-            "121c221a0a110d000000c015000080bf22050d0000803f1205152a000000"
+            "121c221a0a110d000000c015000080bf220515000080bf1205152a000000"
             "7a0a0a082a060a021a001002",
         ),
     ],
 )
-def test_navigation_codecs_match_native_wire_vectors(
+def test_navigation_codecs_match_canonical_coordinate_wire_vectors(
     mode: NavigationMode,
     expected_hex: str,
 ) -> None:
@@ -461,6 +464,31 @@ def test_navigation_codecs_match_native_wire_vectors(
         bytes.fromhex(expected_hex),
         "user_command",
     )
+
+
+@pytest.mark.parametrize("mission_yaw", [0.37, 1.5036, -2.4])
+def test_navigation_heading_uses_the_same_reflection_as_position(
+    mission_yaw: float,
+) -> None:
+    encoded = encode_command(
+        NavigationCommand(
+            NavigationMode.NAVIGATE,
+            MissionPosture(42, 1.0, 2.0, mission_yaw),
+        ),
+        protocol_version=25,
+    )
+    drive = _only_message(encoded.payload, 2)
+    navigate_to = _only_message(drive, 4)
+    posture = _only_message(navigate_to, 1)
+    orientation = parse_fields(_only_message(posture, 4))
+    cosine_bits = integer_values(orientation, 1)
+    sine_bits = integer_values(orientation, 2)
+    assert len(cosine_bits) == len(sine_bits) == 1
+    cosine = struct.unpack("<f", struct.pack("<I", cosine_bits[0]))[0]
+    sine = struct.unpack("<f", struct.pack("<I", sine_bits[0]))[0]
+    encoded_yaw = math.atan2(sine, cosine)
+    expected_yaw = (-mission_yaw - math.pi / 2 + math.pi) % (2 * math.pi) - math.pi
+    assert math.isclose(encoded_yaw, expected_yaw, abs_tol=1e-6)
 
 
 @pytest.mark.parametrize(

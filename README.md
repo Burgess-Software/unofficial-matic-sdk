@@ -29,9 +29,10 @@ service without a cloud relay.
   responses.
 - Stop, pause, or tell the robot to stay put using typed Python APIs that have
   been delivered to a real robot.
-- Drive with a dead-man joystick session, navigate to mission coordinates, run
-  normal room coverage, reprioritize an active plan, or clean a drawn
-  dry-stain/wet-spill area through explicitly armed APIs.
+- Drive with a dead-man joystick session or navigate to a mission pose through
+  explicitly armed APIs exercised against a real robot.
+- Run normal room coverage, reprioritize an active plan, or clean a drawn
+  dry-stain/wet-spill area through explicitly armed, wire-verified APIs.
 
 The [command verification ledger](docs/command-verification.md) shows exactly
 which controls were exercised live, which have offline wire proof, and which
@@ -326,7 +327,8 @@ watchdog and emergency-stop sequence.
 
 These methods use mission-relative coordinates and map UUIDs. Choose the one
 operation you intend to run; the calls are shown together only as an API
-reference:
+reference. `x_meters`, `y_meters`, and `yaw_radians` all use the same canonical
+mission frame; a zero yaw points along positive X.
 
 ```python
 import asyncio

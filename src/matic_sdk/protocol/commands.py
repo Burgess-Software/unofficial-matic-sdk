@@ -489,10 +489,14 @@ class _VerifiedNavigationCodec:
             destination.yaw_radians,
             field_name="destination.yaw_radians",
         )
+        # Mission coordinates are the reflected canonical frame used by the
+        # SDK: native_x = -mission_y and native_y = -mission_x. Directions
+        # must cross that same reflection, so a mission-frame heading
+        # (cos(yaw), sin(yaw)) becomes (-sin(yaw), -cos(yaw)) on the wire.
         orientation = b"".join(
             (
-                _encode_float32_field(1, math.cos(yaw_radians)),
-                _encode_float32_field(2, math.sin(yaw_radians)),
+                _encode_float32_field(1, -math.sin(yaw_radians)),
+                _encode_float32_field(2, -math.cos(yaw_radians)),
             )
         )
         posture = b"".join(
@@ -1343,10 +1347,13 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         ),
         target=USER_COMMAND_HERMES_TARGET,
         wire_verified=True,
+        live_verified=True,
         evidence=(
             "Matic Android 1.151.0 and 1.167.0 native to_proto and prost "
-            "encoder paths prove the coordinate transform and nested envelope; "
-            "motion-capable and not live-tested"
+            "encoder paths prove the raw posture fields and nested envelope; "
+            "the shared reflected basis and a bounded 2026-07-28 live run "
+            "prove the canonical transform, reaching the requested pose "
+            "within 0.012 m and 0.078 rad"
         ),
     ),
     _spec(

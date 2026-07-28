@@ -51,7 +51,13 @@ sequence while docked, then sent 0.10 m/s for two seconds with input-lease
 refreshes. The longer sequence produced 25 acknowledged velocity/zero/Stop
 sends with no failures, and operating state changed from docked to ready.
 
-The other 23 exact formats have offline wire evidence only. No raw-actuation,
+The same day, a bounded navigation run exposed and corrected a yaw-frame
+conversion error. A second command returned to the starting pose and finished
+within 0.012 m and 0.078 rad of the requested position and heading. Navigation
+and Stop were acknowledged, operating state returned to ready, and no robot
+errors appeared.
+
+The other 22 exact formats have offline wire evidence only. No raw-actuation,
 destructive, network-changing, update, reboot, or shutdown command was
 live-tested. Raw-motor encoding is not registered at all. Risk capabilities
 control whether an informed caller may send an enabled exact codec; they do not

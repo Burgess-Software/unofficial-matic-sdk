@@ -1,7 +1,7 @@
 # Command verification ledger
 
 This is the protocol-25 command boundary implemented by the SDK: 65 documented
-intents, 30 exact `wire_verified` formats, 29 registered codecs, and 7 command
+intents, 30 exact `wire_verified` formats, 29 registered codecs, and 8 command
 intents with live delivery evidence. `Wire / yes` means the protobuf body,
 Hermes target, and surrounding channel envelope are exact and the codec is
 registered. `Wire / no` records an exact format disabled by safety policy.
@@ -9,10 +9,11 @@ registered. `Wire / no` records an exact format disabled by safety policy.
 client-side structure are known, but the SDK has no encoder and fails before
 network I/O.
 
-The live column is independent of codec evidence. `Yes` records one bounded,
-acknowledged send on 2026-07-22, not proof of a physical transition. A safety
-gate authorizes an informed attempt; it does not upgrade the evidence. Exact
-offline codecs have not been live-tested unless the row explicitly says yes.
+The live column is independent of codec evidence. `Yes` records a bounded,
+acknowledged send on the date stated in that row; observed physical effects
+are described separately. A safety gate authorizes an informed attempt; it
+does not upgrade the evidence. Exact offline codecs have not been live-tested
+unless the row explicitly says yes.
 
 | Command key | Hermes target | Evidence / codec | SDK live | Gate / risk | Current limitation or blocker |
 | --- | --- | --- | --- | --- | --- |
@@ -27,7 +28,7 @@ offline codecs have not been live-tested unless the row explicitly says yes.
 | `user.resume_coverage` | `user_command` | Wire / yes | No | `MotionControls` / motion | No motion-changing live test |
 | `user.trace_calibration` | `user_command` | Wire / yes | No | `MotionControls` + `UnsafeControls` / raw actuation | Hazardous motion; offline wire proof only |
 | `user.joystick` | `user_command` | Wire / yes | Yes | `MotionControls` / motion | A bounded forward sequence produced 25 acknowledged sends and a docked-to-ready state transition; zero plus Stop completed |
-| `navigation.navigate` | `user_command` | Wire / yes | No | `MotionControls` / motion | Exact offline coordinate transform and envelope; no live test |
+| `navigation.navigate` | `user_command` | Wire / yes | Yes | `MotionControls` / motion | On 2026-07-28 a corrected canonical-frame command reached the requested pose within 0.012 m and 0.078 rad; Stop was acknowledged and no robot errors appeared |
 | `navigation.navigate_and_wait` | `user_command` | Wire / yes | No | `MotionControls` / motion | Exact fixed 900-second wait envelope; no live test |
 | `navigation.navigate_and_explore` | `user_command` | Wire / yes | No | `MotionControls` / motion | Exact NavigateTo plus Explore task envelope; no live test |
 | `coverage.normal` | `user_command` | Wire / yes | No | `MotionControls` / motion | Native encoder proof plus official Android 1.167 synthetic golden vector; no live test |

@@ -125,7 +125,7 @@ class NavigationMode(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class MissionPosture:
-    """A high-level mission-relative 2D destination."""
+    """A canonical mission-relative 2D destination and heading."""
 
     mission_id: int
     x_meters: float

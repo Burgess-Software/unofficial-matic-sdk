@@ -161,8 +161,14 @@ and gRPC status 0 established delivery. The robot stayed docked and each
 setting preserved its value, so no physical or setting transition was claimed.
 On 2026-07-28, the watchdog-backed joystick path produced 25 acknowledged
 velocity/zero/Stop sends with no failures and a docked-to-ready state
-transition. No raw-actuation, destructive, network-changing, update, reboot, or
-shutdown command was live-tested.
+transition. A first bounded navigation run reached its requested position but
+revealed that canonical heading had not crossed the same reflected coordinate
+transform as translation. Correcting the wire unit vector from
+`(cos(yaw), sin(yaw))` to `(-sin(yaw), -cos(yaw))` produced a second live run
+that reached the requested pose within 0.012 m and 0.078 rad. Stop was
+acknowledged, state returned to ready, and no robot errors appeared. No
+raw-actuation, destructive, network-changing, update, reboot, or shutdown
+command was live-tested.
 
 ## Firmware boundary
 

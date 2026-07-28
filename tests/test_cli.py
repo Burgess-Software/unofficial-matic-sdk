@@ -38,7 +38,7 @@ def test_control_status_is_explicitly_fail_closed() -> None:
     assert result.exit_code == 0
     assert '"wire_verified_commands": 30' in result.stdout
     assert '"registered_codecs": 29' in result.stdout
-    assert '"live_delivery_verified_commands": 7' in result.stdout
+    assert '"live_delivery_verified_commands": 8' in result.stdout
     assert '"stationary_stop_enabled": true' in result.stdout
     assert '"motion_codecs_available": 15' in result.stdout
     assert '"watchdog_teleop_enabled": true' in result.stdout

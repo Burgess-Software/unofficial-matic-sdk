@@ -35,9 +35,10 @@ command was live-tested or that its physical effect is known. The
 separately. Trace calibration requires both motion and unsafe capabilities.
 Raw-motor encoding has no registered codec because hardware-safe ranges are not
 proven. The watchdog-backed joystick path has bounded live-delivery evidence
-including a docked-to-ready state transition. No raw-actuation, destructive,
-network-changing, update, reboot, or shutdown command has been live-tested by
-this SDK.
+including a docked-to-ready state transition. Plain navigation also has a
+bounded position-and-heading observation; the wait and explore variants do
+not. No raw-actuation, destructive, network-changing, update, reboot, or
+shutdown command has been live-tested by this SDK.
 
 Commands with an unknown outcome are not retried automatically. Audit records
 contain the local request ID, command kind, timestamps, protocol version,
