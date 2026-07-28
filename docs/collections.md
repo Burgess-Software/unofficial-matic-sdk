@@ -25,6 +25,19 @@ For a merged `TelemetrySession`, `update.model` decodes the new event and
 `update.latest_models` returns the most recent friendly model for every target
 seen so far.
 
+The CLI exposes the same registry for live and recorded responses:
+
+```bash
+matic collections stream latest_pose --decode --json
+matic collections decode captures/telemetry --json
+matic collections decode event.pb --target latest_pose --pretty
+```
+
+These JSON views never contain `raw_payload`, parsed wire fields, or media
+bytes. Household labels, network/account values, pairing codes, and stable
+media hashes are redacted by default. `--include-sensitive` is an explicit
+opt-in for those named values.
+
 Every model includes `target`, `operation`, `deleted`, `raw_payload`, and
 `fields`. The last two make decoding lossless: if firmware adds a protobuf
 field before this SDK names it, the original bytes and parsed wire value remain

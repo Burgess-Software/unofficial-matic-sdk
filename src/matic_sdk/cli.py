@@ -6,6 +6,7 @@ import asyncio
 import json
 import struct
 from collections.abc import Coroutine, Iterable
+from datetime import datetime
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Annotated, Any, TypeVar
@@ -14,13 +15,19 @@ import typer
 
 from matic_sdk import __version__
 from matic_sdk.client import MaticClient
+from matic_sdk.collection_json import collection_model_to_dict
 from matic_sdk.config import DEFAULT_HERMES_PORT, MaticConfig, TlsConfig
 from matic_sdk.credentials import CredentialStore
 from matic_sdk.discovery import BotInformation
 from matic_sdk.discovery import probe as probe_endpoint
 from matic_sdk.enrollment import enroll as enroll_device
 from matic_sdk.models.control import CommandRisk
-from matic_sdk.protocol.collections import KNOWN_TARGETS, TARGET_GROUPS
+from matic_sdk.protocol.collections import (
+    KNOWN_TARGETS,
+    TARGET_GROUPS,
+    RawCollectionEvent,
+    decode_collection_response,
+)
 from matic_sdk.protocol.commands import (
     COMMAND_REGISTRY,
     DEFAULT_PROTOCOL_VERSION,
@@ -37,7 +44,9 @@ app = typer.Typer(
 )
 tls_app = typer.Typer(help="Inspect and configure local TLS identity.")
 credential_app = typer.Typer(help="Manage owner-only local enrollment credentials.")
-collection_app = typer.Typer(help="List, stream, and record Hermes collections.")
+collection_app = typer.Typer(
+    help="List, stream, record, and decode Hermes collections."
+)
 map_app = typer.Typer(help="Decode captured map collection events.")
 voxel_app = typer.Typer(help="Export captured sparse colored voxels.")
 media_app = typer.Typer(help="Extract retained WebP media from captures.")
@@ -51,6 +60,8 @@ app.add_typer(media_app, name="media")
 app.add_typer(control_app, name="control")
 
 T = TypeVar("T")
+_MAX_CAPTURE_MANIFEST_BYTES = 16 * 1024 * 1024
+_MAX_CAPTURE_MANIFEST_EVENTS = 100_000
 
 
 def _run(coroutine: Coroutine[Any, Any, T]) -> T:
@@ -176,6 +187,118 @@ def _event_summary(event: Any) -> dict[str, object]:
         "sequence_no": event.sequence_id.sequence_no if event.sequence_id else None,
         "payload_bytes": len(payload) if payload is not None else 0,
     }
+
+
+def _decoded_event_summary(
+    event: RawCollectionEvent,
+    *,
+    include_sensitive: bool,
+) -> dict[str, object]:
+    summary = _event_summary(event)
+    summary["model"] = collection_model_to_dict(
+        event.decode(),
+        include_sensitive=include_sensitive,
+    )
+    return summary
+
+
+def _emit_collection_summary(
+    summary: dict[str, object],
+    *,
+    json_lines: bool,
+) -> None:
+    encoded = json.dumps(
+        summary,
+        ensure_ascii=True,
+        indent=None if json_lines else 2,
+        separators=(",", ":") if json_lines else None,
+    )
+    typer.echo(encoded)
+
+
+def _manifest_timestamp(value: object, *, filename: str) -> datetime | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"capture timestamp for {filename!r} is not text")
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError as error:
+        raise ValueError(
+            f"capture timestamp for {filename!r} is not ISO-8601"
+        ) from error
+
+
+def _captured_responses(
+    input_path: Path,
+    *,
+    target: str | None,
+) -> Iterable[tuple[str, str, bytes, datetime | None]]:
+    """Yield source name, target, response bytes, and original receive time."""
+
+    candidate = input_path.expanduser()
+    if candidate.is_file():
+        if target is None:
+            raise ValueError("--target is required when decoding a single file")
+        for message in _messages((candidate,)):
+            yield candidate.name, target, message, None
+        return
+    if not candidate.is_dir():
+        raise FileNotFoundError(candidate)
+
+    manifest_path = candidate / "manifest.json"
+    if not manifest_path.exists():
+        if target is None:
+            raise ValueError("capture directory has no manifest.json; provide --target")
+        for capture in _inputs((candidate,)):
+            for message in _messages((capture,)):
+                yield capture.name, target, message, None
+        return
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise ValueError("capture manifest must be a regular file")
+    if manifest_path.stat().st_size > _MAX_CAPTURE_MANIFEST_BYTES:
+        raise ValueError("capture manifest exceeds the 16 MiB size limit")
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise ValueError("capture manifest root must be an object")
+    if manifest.get("format") != "unofficial-matic-sdk-telemetry-v1":
+        raise ValueError("capture manifest has an unsupported format")
+    entries = manifest.get("events")
+    if not isinstance(entries, list):
+        raise ValueError("capture manifest events must be a list")
+    if len(entries) > _MAX_CAPTURE_MANIFEST_EVENTS:
+        raise ValueError("capture manifest exceeds the 100,000 event limit")
+
+    matched = 0
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise ValueError(f"capture manifest event {index} must be an object")
+        filename = entry.get("file")
+        event_target = entry.get("target")
+        if (
+            not isinstance(filename, str)
+            or not filename
+            or Path(filename).name != filename
+        ):
+            raise ValueError(f"capture manifest event {index} has an unsafe file")
+        if not isinstance(event_target, str) or event_target not in KNOWN_TARGETS:
+            raise ValueError(f"capture manifest event {index} has an unknown target")
+        if target is not None and event_target != target:
+            continue
+        capture = candidate / filename
+        if capture.is_symlink() or not capture.is_file():
+            raise ValueError(f"capture file is not a regular file: {filename}")
+        received_at = _manifest_timestamp(
+            entry.get("received_at"),
+            filename=filename,
+        )
+        for message in _messages((capture,)):
+            matched += 1
+            yield filename, event_target, message, received_at
+    if matched == 0:
+        suffix = f" for target {target!r}" if target is not None else ""
+        raise ValueError(f"capture manifest contains no events{suffix}")
 
 
 def _info_dict(info: BotInformation) -> dict[str, object]:
@@ -456,6 +579,27 @@ def stream(
     host: Annotated[str, typer.Option(envvar="MATIC_HOST")],
     count: Annotated[int, typer.Option(min=1)] = 10,
     duration: Annotated[float, typer.Option(min=0.1)] = 10.0,
+    decode: Annotated[
+        bool,
+        typer.Option(
+            "--decode",
+            help="Include the registered friendly model; may expose household data.",
+        ),
+    ] = False,
+    json_lines: Annotated[
+        bool,
+        typer.Option(
+            "--json/--pretty",
+            help="Emit compact JSON Lines or indented JSON.",
+        ),
+    ] = True,
+    include_sensitive: Annotated[
+        bool,
+        typer.Option(
+            "--include-sensitive",
+            help="Include names, network/account data, pairing codes, and hashes.",
+        ),
+    ] = False,
     port: Annotated[int, typer.Option(envvar="MATIC_PORT")] = DEFAULT_HERMES_PORT,
     authority: Annotated[str | None, typer.Option(envvar="MATIC_AUTHORITY")] = None,
     server_name: Annotated[
@@ -469,10 +613,12 @@ def stream(
     ca_file: Annotated[Path | None, typer.Option(envvar="MATIC_CA_FILE")] = None,
     credential_root: Annotated[Path | None, typer.Option()] = None,
 ) -> None:
-    """Stream event metadata without printing raw keys or payloads."""
+    """Stream safe metadata or opt-in friendly decoded values."""
 
     if target not in KNOWN_TARGETS:
         raise typer.BadParameter(f"unknown target: {target}", param_hint="target")
+    if include_sensitive and not decode:
+        raise typer.BadParameter("--include-sensitive requires --decode")
 
     async def run() -> None:
         config = _config(
@@ -495,7 +641,15 @@ def stream(
                         event = await asyncio.wait_for(anext(events), remaining)
                     except TimeoutError:
                         return
-                    typer.echo(json.dumps(_event_summary(event), separators=(",", ":")))
+                    summary = (
+                        _decoded_event_summary(
+                            event,
+                            include_sensitive=include_sensitive,
+                        )
+                        if decode
+                        else _event_summary(event)
+                    )
+                    _emit_collection_summary(summary, json_lines=json_lines)
 
     try:
         _run(run())
@@ -558,6 +712,58 @@ def record(
     except Exception as error:
         _abort(error)
     typer.echo(str(written))
+
+
+@collection_app.command("decode")
+def decode_collection_capture(
+    input_path: Annotated[
+        Path,
+        typer.Argument(help="Recorded capture directory or one response file."),
+    ],
+    target: Annotated[
+        str | None,
+        typer.Option(
+            "--target",
+            help="Required for a file or a directory without a manifest.",
+        ),
+    ] = None,
+    json_lines: Annotated[
+        bool,
+        typer.Option(
+            "--json/--pretty",
+            help="Emit compact JSON Lines or indented JSON.",
+        ),
+    ] = True,
+    include_sensitive: Annotated[
+        bool,
+        typer.Option(
+            "--include-sensitive",
+            help="Include names, network/account data, pairing codes, and hashes.",
+        ),
+    ] = False,
+) -> None:
+    """Decode recorded responses without printing raw protobuf or media bytes."""
+
+    if target is not None and target not in KNOWN_TARGETS:
+        raise typer.BadParameter(f"unknown target: {target}", param_hint="target")
+    try:
+        for source, event_target, response, received_at in _captured_responses(
+            input_path,
+            target=target,
+        ):
+            event = decode_collection_response(
+                event_target,
+                response,
+                received_at=received_at,
+            )
+            summary = _decoded_event_summary(
+                event,
+                include_sensitive=include_sensitive,
+            )
+            summary["source"] = source
+            _emit_collection_summary(summary, json_lines=json_lines)
+    except Exception as error:
+        _abort(error)
 
 
 @map_app.command("decode")

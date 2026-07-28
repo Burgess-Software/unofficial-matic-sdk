@@ -3,6 +3,7 @@ from __future__ import annotations
 import struct
 from datetime import UTC, datetime
 
+from matic_sdk.collection_json import collection_model_to_dict
 from matic_sdk.collection_models import (
     COLLECTION_DECODERS,
     COLLECTION_MODEL_TYPES,
@@ -203,3 +204,22 @@ def test_sensitive_friendly_fields_are_hidden_from_repr() -> None:
 
     assert email not in repr(customer)
     assert ssid not in repr(wifi)
+
+
+def test_json_view_is_lossless_in_memory_but_safe_for_terminal_output() -> None:
+    image = vp8x_webp(64, 48)
+    media = decode_collection_payload(
+        "coverage_session_thumbnails",
+        encode_bytes_field(2, encode_bytes_field(1, image)),
+    )
+
+    encoded = collection_model_to_dict(media)
+
+    assert encoded["type"] == "MediaCollectionModel"
+    assert "raw_payload" not in encoded
+    assert "fields" not in encoded
+    assets = encoded["assets"]
+    assert isinstance(assets, list)
+    assert assets[0]["byte_count"] == len(image)
+    assert assets[0]["sha256"] == "[REDACTED]"
+    assert "data" not in assets[0]

@@ -38,7 +38,8 @@ jobs:
           uv pip install --python .base-wheel-venv/bin/python "$wheel_path"
           .base-wheel-venv/bin/matic --version
           .base-wheel-venv/bin/matic collections list
-          .base-wheel-venv/bin/python -c "import matic_sdk; assert len(matic_sdk.KNOWN_TARGETS) == 43"
+          .base-wheel-venv/bin/matic collections decode --help
+          .base-wheel-venv/bin/python -c "import matic_sdk; assert len(matic_sdk.KNOWN_TARGETS) == 43; assert callable(matic_sdk.collection_model_to_dict)"
       - name: Smoke-test source distribution
         run: |
           uv venv .sdist-venv
@@ -52,7 +53,8 @@ jobs:
           wheel_path=$(realpath dist/*.whl)
           uv pip install --python .wheel-venv/bin/python "$wheel_path[all]"
           .wheel-venv/bin/matic --version
-          .wheel-venv/bin/python -c "import matic_sdk; from matic_sdk.cli import _messages; from matic_sdk.maps import SUPPORTED_MAP_TARGETS; assert len(matic_sdk.KNOWN_TARGETS) == 43; assert 'map_integrated' in SUPPORTED_MAP_TARGETS"
+          .wheel-venv/bin/matic collections decode --help
+          .wheel-venv/bin/python -c "import matic_sdk; from matic_sdk.cli import _messages; from matic_sdk.maps import SUPPORTED_MAP_TARGETS; assert len(matic_sdk.KNOWN_TARGETS) == 43; assert callable(matic_sdk.collection_model_to_dict); assert 'map_integrated' in SUPPORTED_MAP_TARGETS"
 
   repository-safety:
     runs-on: ubuntu-latest
