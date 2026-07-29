@@ -34,6 +34,7 @@ authenticated local-network service without a cloud relay.
 | Motion | Stop, pause, stay put, dock, drive with direct joystick velocities, or navigate to a mission pose |
 | Cleaning | Run mapped-room coverage, reprioritize an active plan, or clean a drawn dry-stain/wet-spill area |
 | Maps | Build partitions; edit rooms, no-go/drive-only/stair zones, semantics, and sink-summon locations |
+| Speaker and voice | Play or stop built-in seasonal tracks and send the exposed voice preference commands |
 | Schedules and settings | Create schedules and change supported preferences through typed methods |
 | Exports | Assemble RGB/coverage/semantic maps, export sparse colored voxels as PLY, and recover retained WebP media |
 
@@ -207,6 +208,31 @@ matic maps decode captures/map \
 
 The decoder supports RGB, integrated, combined-coverage, semantic, and
 semantic-override captures and assembles them in the canonical app orientation.
+Categorical tiles also retain all 1,024 per-cell firmware codes through
+`MapTile.classification`. Known codes decode to typed occupancy, semantic, or
+override enums; unknown future codes remain available as `UnknownMapValue`
+instead of being collapsed into an image mask.
+
+```python
+from matic_sdk import MapValueKind, SemanticsKind, UnknownMapValue
+from matic_sdk.maps import classification_counts
+
+event = await robot.first("map_semantics")
+semantic_map = event.decode()
+totals = classification_counts(semantic_map.tiles, MapValueKind.SEMANTICS)
+print(totals.get(SemanticsKind.WIRE, 0))
+print(
+    {
+        value.code: count
+        for value, count in totals.items()
+        if isinstance(value, UnknownMapValue)
+    }
+)
+```
+
+The named semantic categories are unknown, hard floor, carpet, wire, poop, and
+generic pet. They are retained map classifications, not a live object-tracking
+or raw camera inference endpoint.
 
 <p align="center">
   <img width="720" alt="Decoded Matic map mosaic" src="https://github.com/user-attachments/assets/58efbb9e-4180-4c8d-b38f-ff300f1c86b7" />
@@ -325,7 +351,8 @@ Common methods include:
 | Cleaning | `normal_coverage()`, `stain_mode()`, `reprioritize_coverage()` |
 | Maps | `build_partition()`, room edit methods, zone/semantic/sink-location methods |
 | Schedules | `add_or_modify_schedule()`, `toggle_schedule()`, `remove_schedule()` |
-| Settings | `set_binary_setting()` |
+| Speaker and voice | `set_jukebox_track()`, `stop_jukebox()`, `set_voice_enabled()` |
+| Settings | `set_binary_setting()`, `set_auto_record_voice_enabled()` |
 | Cleaning mechanisms | `set_raw_motors()` |
 
 Each `joystick()` call sends one velocity command. The SDK does not repeat it,
@@ -380,6 +407,8 @@ Runnable programs:
 - Some collection variants were observed only in an empty/default state, so
   optional model values remain `None` until that variant is emitted.
 - Maps and voxels are decoded from captures; this is not a live map dashboard.
+- Speaker control selects fixed built-in tracks; there is no arbitrary audio,
+  volume, TTS, microphone-byte, or live microphone-stream API.
 - Raw-motor commands are direct and wire-verified, have no device-specific
   range limits, and have not been exercised live.
 - Normal operation is LAN-only; the portal-backed remote transport remains

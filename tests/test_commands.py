@@ -40,6 +40,7 @@ from matic_sdk.models.control import (
     DrawnCircle,
     ExplicitFloorCleaningMode,
     JoystickCommand,
+    JukeboxTrack,
     LifecycleAction,
     LifecycleCommand,
     MapEnvironmentAction,
@@ -197,6 +198,8 @@ def test_default_registry_exposes_only_verified_codecs() -> None:
         "coverage.normal",
         "navigation.navigate",
         "settings.child_lock",
+        "settings.auto_record_voice",
+        "settings.jukebox",
         "settings.pet_waste_avoidance",
         "settings.voice",
         "user.dock",
@@ -1562,6 +1565,36 @@ async def test_motion_convenience_methods_route_typed_commands_once() -> None:
     assert all(
         command.hermes_target == "user_command" for command in transport.commands
     )
+
+
+@pytest.mark.asyncio
+async def test_audio_setting_convenience_methods_route_typed_commands_once() -> None:
+    transport = AcknowledgingTransport()
+    executor = CommandExecutor(
+        transport,
+        protocol_version=25,
+        tls_identity_verified=True,
+    )
+
+    receipts = [
+        await executor.set_voice_enabled(True),
+        await executor.set_auto_record_voice_enabled(True),
+        await executor.set_jukebox_track(JukeboxTrack.JINGLE_BELLS),
+        await executor.stop_jukebox(),
+    ]
+
+    assert [receipt.command_key for receipt in receipts] == [
+        "settings.voice",
+        "settings.auto_record_voice",
+        "settings.jukebox",
+        "settings.jukebox",
+    ]
+    assert transport.commands == [
+        EncodedCommand(b"\x08\x01", "voice_enabled_command"),
+        EncodedCommand(b"\x08\x01", "auto_record_voice_enabled_command"),
+        EncodedCommand(b"\x08\x02", "jukebox_command"),
+        EncodedCommand(b"", "jukebox_command"),
+    ]
 
 
 @pytest.mark.asyncio

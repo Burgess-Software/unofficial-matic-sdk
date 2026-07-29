@@ -3063,7 +3063,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
             "Official Android scalar-bool serializer and exact target; native "
             "offline golden vectors prove canonical false omission and true "
             "payload; idempotent SDK live write acknowledged and state "
-            "preserved 2026-07-22"
+            "preserved 2026-07-22; bounded true/false writes were acknowledged "
+            "but the retained state remained false 2026-07-29"
         ),
     ),
     _spec(
@@ -3075,7 +3076,14 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         fields=("enabled: bool",),
         target="auto_record_voice_enabled_command",
         wire_verified=True,
-        evidence=_NATIVE_SERIALIZER_EVIDENCE,
+        live_verified=True,
+        evidence=(
+            "Official Android serializer, exact target, and native offline "
+            "golden vectors; bounded true/false writes were "
+            "acknowledged with telemetry uploads disabled, but the retained "
+            "state remained false and no app-facing media event appeared "
+            "2026-07-29"
+        ),
     ),
     _spec(
         "settings.matter_pairing",
@@ -3108,7 +3116,13 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         fields=("track: Option<OhHanukkah | DeckTheHalls | JingleBells>",),
         target="jukebox_command",
         wire_verified=True,
-        evidence=_NATIVE_SERIALIZER_EVIDENCE,
+        live_verified=True,
+        evidence=(
+            "Official Android serializer, exact target, and native offline "
+            "golden vectors; Jingle Bells and stop were "
+            "acknowledged, both jukebox state transitions were observed, and "
+            "the nearby owner confirmed audible playback 2026-07-29"
+        ),
     ),
     _spec(
         "schedule.add_or_modify",

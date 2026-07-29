@@ -26,6 +26,11 @@ The highest-value streams are pose, operating state, motor telemetry, active
 mission/session, coverage progress, trajectory, maps, version/update state,
 settings, schedules, and retained media.
 
+On 2026-07-29, the lossless categorical map decoder was exercised against a
+complete retained semantic-map stream. It preserved the official wire and
+generic-pet categories and retained the firmware's still-unnamed code 6 as
+`UnknownMapValue(6)` rather than folding it into a known class.
+
 ## Controls
 
 The official client exposes mission, navigation, coverage, cleaning, map,
@@ -65,7 +70,15 @@ bounded one-room Quick Vacuum run verified normal coverage delivery and the
 friendly active plan/session decoder before an acknowledged Stop and Dock
 returned the robot to charging.
 
-The other 55 exact formats have offline wire evidence only. No raw-actuation,
+On 2026-07-29, Jingle Bells and a subsequent stop were each acknowledged,
+`jukebox_state` transitioned to the selected track and back to empty, and the
+nearby owner confirmed that the music was audible. Voice and automatic
+voice-recording true/false writes were also acknowledged during a bounded test,
+but both retained setting states stayed false and no recording appeared in the
+app-facing media collections. Uploader opt-in remained false before and after
+the test. This establishes command delivery, not microphone-audio access.
+
+The other 53 exact formats have offline wire evidence only. No raw-actuation,
 destructive, network-changing, update, reboot, or shutdown command was
 live-tested. Raw-motor encoding is registered but has not been exercised live.
 All enabled typed commands are callable directly; risk classifications are

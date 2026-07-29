@@ -222,6 +222,38 @@ await robot.commands.set_binary_setting(SettingAction.CHILD_LOCK, True)
 Child lock, pet-waste avoidance, preview releases, voice, and automatic voice
 recording have exact typed variants where supported.
 
+Voice has a direct convenience method:
+
+```python
+await robot.commands.set_voice_enabled(True)
+```
+
+The robot acknowledged voice and automatic-recording true/false commands in a
+bounded test, but the tested firmware kept both retained states false. The
+automatic-recording command does not return microphone bytes or provide a live
+audio stream. Check the corresponding collection state independently after a
+write, and do not treat transport acknowledgement as proof that recording
+started.
+
+## Play a built-in speaker track
+
+```python
+import asyncio
+
+from matic_sdk import JukeboxTrack
+
+await robot.commands.set_jukebox_track(JukeboxTrack.JINGLE_BELLS)
+try:
+    await asyncio.sleep(8)
+finally:
+    await robot.commands.stop_jukebox()
+```
+
+`jukebox_state` decodes known selections as `JukeboxTrack` and preserves future
+unknown values as strings such as `unknown_9`. This endpoint selects one of the
+robot's built-in seasonal tracks. It is not an arbitrary audio, volume, TTS, or
+microphone interface.
+
 ## Send cleaning-mechanism setpoints
 
 ```python

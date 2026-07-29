@@ -12,6 +12,7 @@ from matic_sdk.collection_models import (
 )
 from matic_sdk.models.collections import (
     BinarySettingCollectionModel,
+    JukeboxCollectionModel,
     MapTileCollectionModel,
     MediaCollectionModel,
     PoseCollectionModel,
@@ -20,6 +21,7 @@ from matic_sdk.models.collections import (
     StructuredCollectionModel,
     VersionCollectionModel,
 )
+from matic_sdk.models.control import JukeboxTrack
 from matic_sdk.protocol.collections import (
     KNOWN_TARGET_SET,
     CollectionOperation,
@@ -187,6 +189,25 @@ def test_schedule_and_media_models_have_named_fields() -> None:
     assert len(media.assets) == 1
     assert (media.assets[0].width, media.assets[0].height) == (64, 48)
     assert "VP8X" not in repr(media)
+
+
+def test_jukebox_model_uses_typed_tracks_and_preserves_unknown_values() -> None:
+    selected = decode_collection_payload(
+        "jukebox_state",
+        encode_varint_field(1, 2),
+    )
+    future = decode_collection_payload(
+        "jukebox_state",
+        encode_varint_field(1, 9),
+    )
+    stopped = decode_collection_payload("jukebox_state", b"")
+
+    assert isinstance(selected, JukeboxCollectionModel)
+    assert selected.track is JukeboxTrack.JINGLE_BELLS
+    assert isinstance(future, JukeboxCollectionModel)
+    assert future.track == "unknown_9"
+    assert isinstance(stopped, JukeboxCollectionModel)
+    assert stopped.track is None
 
 
 def test_sensitive_friendly_fields_are_hidden_from_repr() -> None:

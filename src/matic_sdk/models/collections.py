@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, TypeAlias
 from uuid import UUID
 
+from matic_sdk.models.control import JukeboxTrack
 from matic_sdk.protocol.collections import CollectionOperation
 from matic_sdk.protocol.wire import WireField
 
@@ -73,7 +74,7 @@ class Pose:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class MapTileCollectionModel(CollectionModel):
-    """One map tile add/delete with decoded layers when Pillow is installed."""
+    """One map tile add/delete with lossless typed layers when Pillow is installed."""
 
     mission_id: int | None
     page_x: int | None
@@ -395,7 +396,7 @@ class CustomerInfoCollectionModel(CollectionModel):
 class JukeboxCollectionModel(CollectionModel):
     """Seasonal jukebox selection."""
 
-    track: str | None
+    track: JukeboxTrack | str | None
 
 
 FriendlyCollectionModel: TypeAlias = (

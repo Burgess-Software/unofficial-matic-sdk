@@ -24,6 +24,7 @@ from matic_sdk.models.control import (
     CoverageSetting,
     DrawnCircle,
     JoystickCommand,
+    JukeboxTrack,
     MapEnvironmentAction,
     MapEnvironmentCommand,
     MapPoint,
@@ -702,6 +703,34 @@ class CommandExecutor:
         """Set an exact, allowlisted boolean preference."""
 
         return await self.execute(SettingsCommand(action, enabled))
+
+    async def set_voice_enabled(self, enabled: bool) -> CommandReceipt:
+        """Enable or disable the robot's built-in spoken voice."""
+
+        return await self.set_binary_setting(SettingAction.VOICE, enabled)
+
+    async def set_auto_record_voice_enabled(self, enabled: bool) -> CommandReceipt:
+        """Request the automatic voice-recording preference.
+
+        This setting does not expose microphone audio through the SDK. Delivery
+        acknowledgement and the retained setting state must be checked
+        separately because current firmware may acknowledge without applying it.
+        """
+
+        return await self.set_binary_setting(SettingAction.AUTO_RECORD_VOICE, enabled)
+
+    async def set_jukebox_track(
+        self,
+        track: JukeboxTrack | None,
+    ) -> CommandReceipt:
+        """Play one built-in seasonal track, or pass ``None`` to stop."""
+
+        return await self.execute(SettingsCommand(SettingAction.JUKEBOX, track))
+
+    async def stop_jukebox(self) -> CommandReceipt:
+        """Stop the current built-in jukebox track."""
+
+        return await self.set_jukebox_track(None)
 
     async def set_raw_motors(
         self,
