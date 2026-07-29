@@ -50,12 +50,12 @@ All 43 known collection targets have a stable model type:
 
 | Target | Model | Friendly values |
 | --- | --- | --- |
-| `map_compressed_rgb` | `MapTileCollectionModel` | Mission/page coordinates, decoded layers and tiles |
-| `map_compressed_rgb_higher` | `MapTileCollectionModel` | Mission/page coordinates, decoded layers and tiles |
-| `map_integrated` | `MapTileCollectionModel` | Mission/page coordinates, decoded layers and tiles |
+| `map_compressed_rgb` | `MapTileCollectionModel` | Mission/page coordinates, decoded image layers and tiles |
+| `map_compressed_rgb_higher` | `MapTileCollectionModel` | Mission/page coordinates, decoded image layers and tiles |
+| `map_integrated` | `MapTileCollectionModel` | Image layers plus typed occupancy, semantics, and override values |
 | `map_combined_coverage` | `MapTileCollectionModel` | Mission/page coordinates, decoded layers and tiles |
-| `map_semantics` | `MapTileCollectionModel` | Mission/page coordinates, decoded layers and tiles |
-| `map_semantics_override` | `MapTileCollectionModel` | Mission/page coordinates, decoded layers and tiles |
+| `map_semantics` | `MapTileCollectionModel` | Lossless semantic codes including carpet, wire, poop, and pet |
+| `map_semantics_override` | `MapTileCollectionModel` | Lossless typed semantic-override codes |
 | `latest_pose` | `PoseCollectionModel` | Mission, translation, quaternion, monotonic time, timestamp |
 | `dock_detections` | `DockDetectionCollectionModel` | Mission, dock ID, pose, method, timestamp |
 | `displayed_mission` | `MissionCollectionModel` | Active/displayed missions, explored state, floor labels |
@@ -96,6 +96,35 @@ All 43 known collection targets have a stable model type:
 
 The public mapping `matic_sdk.COLLECTION_MODEL_TYPES` lets applications inspect
 the expected type for a target without decoding an event.
+
+## Categorical map values
+
+Categorical map layers retain both their rendered Pillow image and a
+`MapTile.classification`. The classification contains exactly 1,024 canonical
+row-major codes for the `32 x 32` tile. `code_at(x, y)` returns the exact byte;
+`value_at(x, y)` returns `GeometricOccupancy`, `SemanticsKind`, or
+`SemanticsOverrideMapValue`. A code introduced by newer firmware becomes
+`UnknownMapValue(code)` instead of being discarded or misnamed.
+
+```python
+from matic_sdk import MapValueKind, SemanticsKind, UnknownMapValue
+from matic_sdk.maps import classification_counts
+
+event = await robot.first("map_semantics")
+semantic_map = event.decode()
+totals = classification_counts(semantic_map.tiles, MapValueKind.SEMANTICS)
+for value, count in totals.items():
+    if value is SemanticsKind.WIRE:
+        print("wire cells", count)
+    elif isinstance(value, UnknownMapValue):
+        print("new firmware value", value.code, count)
+```
+
+The semantic enum names the categories exposed by the official client:
+unknown, hard floor, carpet, wire, poop, and generic pet. These are retained
+map cells, not a live camera inference API or a stream of independently tracked
+objects. `classification_counts()` aggregates one typed plane across tiles;
+`MapClassification.named_counts` provides stable lowercase labels for logs.
 
 ## Evidence boundary
 

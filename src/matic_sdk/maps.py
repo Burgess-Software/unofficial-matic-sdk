@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 import struct
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,10 +24,13 @@ from .models.maps import (
     CollectionEvent,
     DecodedMapEvent,
     MapBounds,
+    MapCellValue,
+    MapClassification,
     MapMosaic,
     MapOrientation,
     MapTarget,
     MapTile,
+    MapValueKind,
 )
 
 TILE_SIZE = 32
@@ -440,18 +443,36 @@ def _unpack_nibbles(raw: bytes) -> bytes:
     return bytes(output)
 
 
-def _render_nibbles(raw: bytes, kind: str) -> Image.Image:
-    values = transpose_x_major(_unpack_nibbles(raw))
-    if kind == "semantics":
+def _render_classification(
+    values: bytes,
+    kind: MapValueKind,
+) -> Image.Image:
+    if len(values) != PIXELS_PER_TILE:
+        raise MapDecodeError(
+            f"classification tile is {len(values)} bytes; expected 1024"
+        )
+    if kind is MapValueKind.SEMANTICS:
         rendered = bytes(255 if value == 2 else 0 for value in values)
-    elif kind == "semantics-override":
+    elif kind is MapValueKind.SEMANTICS_OVERRIDE:
         rendered = bytes(255 if value in (2, 4) else 0 for value in values)
     else:
-        rendered = bytes(value * 17 for value in values)
+        rendered = bytes(min(255, value * 17) for value in values)
     return Image.frombytes("L", (32, 32), rendered)
 
 
-def _render_r8_tile(raw: bytes, target: MapTarget) -> list[tuple[str, Image.Image]]:
+def _render_nibbles(
+    raw: bytes,
+    kind: MapValueKind,
+) -> tuple[Image.Image, MapClassification]:
+    values = transpose_x_major(_unpack_nibbles(raw))
+    classification = MapClassification(kind, values)
+    return _render_classification(values, kind), classification
+
+
+def _render_r8_tile(
+    raw: bytes,
+    target: MapTarget,
+) -> list[tuple[str, Image.Image, MapClassification | None]]:
     if len(raw) != 1024:
         raise MapDecodeError(f"map tile is {len(raw)} bytes; expected 1024")
     values = transpose_x_major(raw)
@@ -459,16 +480,28 @@ def _render_r8_tile(raw: bytes, target: MapTarget) -> list[tuple[str, Image.Imag
         sweep = bytes(255 if value & 0x0F else 0 for value in values)
         mop = bytes(255 if value >> 4 else 0 for value in values)
         return [
-            ("coverage-sweep", Image.frombytes("L", (32, 32), sweep)),
-            ("coverage-mop", Image.frombytes("L", (32, 32), mop)),
+            ("coverage-sweep", Image.frombytes("L", (32, 32), sweep), None),
+            ("coverage-mop", Image.frombytes("L", (32, 32), mop), None),
         ]
     if target == "map_semantics":
-        values = bytes(255 if value == 2 else 0 for value in values)
-        return [("semantics", Image.frombytes("L", (32, 32), values))]
+        classification = MapClassification(MapValueKind.SEMANTICS, values)
+        return [
+            (
+                "semantics",
+                _render_classification(values, MapValueKind.SEMANTICS),
+                classification,
+            )
+        ]
     if target == "map_semantics_override":
-        values = bytes(255 if value in (2, 4) else 0 for value in values)
-        return [("semantics-override", Image.frombytes("L", (32, 32), values))]
-    return [("map-r8", Image.frombytes("L", (32, 32), values))]
+        classification = MapClassification(MapValueKind.SEMANTICS_OVERRIDE, values)
+        return [
+            (
+                "semantics-override",
+                _render_classification(values, MapValueKind.SEMANTICS_OVERRIDE),
+                classification,
+            )
+        ]
+    return [("map-r8", Image.frombytes("L", (32, 32), values), None)]
 
 
 def identify_map_target(payload: bytes) -> MapTarget | None:
@@ -527,7 +560,11 @@ def decode_map_event(
     tiles: list[MapTile] = []
     warnings: list[str] = []
 
-    def add(layer: str, image: Image.Image) -> None:
+    def add(
+        layer: str,
+        image: Image.Image,
+        classification: MapClassification | None = None,
+    ) -> None:
         tiles.append(
             MapTile(
                 mission_id=event.mission_id or 0,
@@ -537,6 +574,7 @@ def decode_map_event(
                 image=image,
                 target=selected or "map-r8",
                 sequence=event.sequence,
+                classification=classification,
             )
         )
 
@@ -589,12 +627,17 @@ def decode_map_event(
             )
         override = _exact_fast_field(fields, 9) or bytes(512)
         add("integrated-surface", _render_surface_mask(integrated_surface))
-        for name, plane in (
-            ("occupancy", occupancy),
-            ("semantics", semantics),
-            ("semantics-override", override),
+        for name, plane, kind in (
+            ("occupancy", occupancy, MapValueKind.GEOMETRIC_OCCUPANCY),
+            ("semantics", semantics, MapValueKind.SEMANTICS),
+            (
+                "semantics-override",
+                override,
+                MapValueKind.SEMANTICS_OVERRIDE,
+            ),
         ):
-            add(name, _render_nibbles(plane, name))
+            image, classification = _render_nibbles(plane, kind)
+            add(name, image, classification)
         return DecodedMapEvent(event, tuple(tiles), tuple(warnings))
 
     raw: bytes | None = None
@@ -606,8 +649,8 @@ def decode_map_event(
         raw = candidate.data if candidate else None
     if raw is None:
         return DecodedMapEvent(event, (), ("map tile has no 1024-byte R8 buffer",))
-    for layer, image in _render_r8_tile(raw, selected):
-        add(layer, image)
+    for layer, image, tile_classification in _render_r8_tile(raw, selected):
+        add(layer, image, tile_classification)
     return DecodedMapEvent(event, tuple(tiles), tuple(warnings))
 
 
@@ -647,6 +690,22 @@ class MapCollectionState:
 
     def clear(self) -> None:
         self._by_key.clear()
+
+
+def classification_counts(
+    tiles: Iterable[MapTile],
+    kind: MapValueKind,
+) -> dict[MapCellValue, int]:
+    """Aggregate one categorical map plane across decoded tiles."""
+
+    if not isinstance(kind, MapValueKind):
+        raise TypeError("classification kind must be MapValueKind")
+    counts: Counter[MapCellValue] = Counter()
+    for tile in tiles:
+        classification = tile.classification
+        if classification is not None and classification.kind is kind:
+            counts.update(classification.counts)
+    return dict(counts)
 
 
 def orient_tile(
@@ -747,6 +806,7 @@ __all__ = [
     "MapCollectionState",
     "MapDecodeError",
     "build_mosaics",
+    "classification_counts",
     "decode_map_event",
     "identify_map_target",
     "orient_tile",

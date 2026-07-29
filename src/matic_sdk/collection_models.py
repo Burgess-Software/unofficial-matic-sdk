@@ -60,6 +60,7 @@ from matic_sdk.models.collections import (
     WifiStatusCollectionModel,
     ZoneCollectionModel,
 )
+from matic_sdk.models.control import JukeboxTrack
 from matic_sdk.protocol.collections import (
     KNOWN_TARGET_SET,
     MAP_TARGETS,
@@ -1003,9 +1004,13 @@ def _decode_customer(context: _DecodeContext) -> CustomerInfoCollectionModel:
 
 
 def _decode_jukebox(context: _DecodeContext) -> JukeboxCollectionModel:
+    track_name = _enum_name(_integer(context.fields, 1), _JUKEBOX_TRACKS)
+    track: JukeboxTrack | str | None = track_name
+    if track_name is not None and not track_name.startswith("unknown_"):
+        track = JukeboxTrack(track_name)
     return JukeboxCollectionModel(
         **context.common(),
-        track=_enum_name(_integer(context.fields, 1), _JUKEBOX_TRACKS),
+        track=track,
     )
 
 

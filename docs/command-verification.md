@@ -1,7 +1,7 @@
 # Command verification ledger
 
 This is the protocol-25 command boundary implemented by the SDK: 65 documented
-intents, 65 exact `wire_verified` formats and registered codecs, and 10 command
+intents, 65 exact `wire_verified` formats and registered codecs, and 12 command
 intents with live delivery evidence. `Wire / yes` means the protobuf body,
 Hermes target, and surrounding channel envelope are exact and the codec is
 registered.
@@ -57,11 +57,11 @@ explicitly says yes.
 | `device.configure_shipping` | `configure_shipping_command` | Wire / yes | No | destructive | Destructive; offline wire proof only |
 | `settings.child_lock` | `child_lock_enabled_command` | Wire / yes | Yes | persistent | Same-value write acknowledged; no transition claimed |
 | `settings.pet_waste_avoidance` | `petwaste_enabled_command` | Wire / yes | Yes | persistent | Same-value write acknowledged; no transition claimed |
-| `settings.voice` | `voice_enabled_command` | Wire / yes | Yes | persistent | Same-value write acknowledged; no transition claimed |
-| `settings.auto_record_voice` | `auto_record_voice_enabled_command` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
+| `settings.voice` | `voice_enabled_command` | Wire / yes | Yes | persistent | True and false writes were acknowledged on 2026-07-29, but retained state stayed false |
+| `settings.auto_record_voice` | `auto_record_voice_enabled_command` | Wire / yes | Yes | sensitive | True and false writes were acknowledged on 2026-07-29 with uploader opt-in false; retained state stayed false and no app-facing recording appeared |
 | `settings.matter_pairing` | `matter_pairing_command` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
 | `settings.preview_release` | `request_preview_release_command` | Wire / yes | No | persistent | Offline native-serializer golden proof only |
-| `settings.jukebox` | `jukebox_command` | Wire / yes | No | persistent | All optional enum variants proven offline |
+| `settings.jukebox` | `jukebox_command` | Wire / yes | Yes | persistent | Jingle Bells start and stop were acknowledged on 2026-07-29, retained state transitioned both ways, and the nearby owner heard the track |
 | `schedule.add_or_modify` | `edit_schedule` | Wire / yes | No | persistent | Full 1,905-byte standard event and custom-area structures proven offline |
 | `schedule.remove` | `edit_schedule` | Wire / yes | No | destructive | Destructive; offline wire proof only |
 | `schedule.toggle` | `edit_schedule` | Wire / yes | No | persistent | Offline native-serializer golden proof only |

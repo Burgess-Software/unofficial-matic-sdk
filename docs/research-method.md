@@ -185,6 +185,19 @@ and current region before Stop and Dock returned the robot to charging. No
 raw-actuation, destructive, network-changing, update, reboot, or shutdown
 command was live-tested.
 
+On 2026-07-29, the SDK sent the built-in Jingle Bells selection and then the
+empty stop selection. Both were acknowledged, `jukebox_state` transitioned in
+each direction, and the nearby owner confirmed an audible physical effect.
+Bounded voice and automatic voice-recording true/false writes were also
+acknowledged while uploader opt-in was disabled, but their retained states
+stayed false and no app-facing media collection produced a recording. Those
+results establish delivery without claiming microphone-audio access.
+
+The same day, the lossless categorical map layer was exercised on a complete
+retained `map_semantics` stream. Known wire and generic-pet cells decoded to
+their official enum names, while code 6 remained `UnknownMapValue(6)`. No
+household map capture or per-class cell counts were added to the repository.
+
 ## Firmware boundary
 
 Authenticated Hermes access reveals state that the robot deliberately exposes

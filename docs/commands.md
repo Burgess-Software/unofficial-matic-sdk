@@ -68,7 +68,7 @@ omitted rather than encoded as a zero-length bytes field. A successful unary
 RPC returns one `ChannelResponse`; its bytes field may itself be absent/default
 or populated.
 
-Ten command intents have live delivery evidence. Six were delivered once on
+Twelve command intents have live delivery evidence. Six were delivered once on
 2026-07-22: Stop, StayPut, Pause, child lock, pet-waste avoidance, and voice.
 Stop used an initial one-shot
 check. A separate bounded verifier required parked telemetry, pre-read all
@@ -84,8 +84,15 @@ acknowledged Stop and ready state with no errors. An acknowledged Dock command
 then transitioned ready to returning to charging in about eight seconds with
 no errors. A bounded one-room Quick Vacuum run also verified normal coverage
 delivery and the active plan/session decoder before Stop and Dock returned the
-robot to charging. No raw-actuation, destructive, network-changing, update,
-reboot, or shutdown command was live-tested.
+robot to charging. On 2026-07-29, the built-in Jingle Bells track and its stop
+command were acknowledged, the retained jukebox state transitioned both ways,
+and the nearby owner heard the music. Automatic voice-recording true/false
+writes were acknowledged with uploader opt-in disabled, but retained voice and
+automatic-recording states stayed false and no app-facing recording appeared.
+The exposed speaker endpoint selects only built-in seasonal tracks; the SDK has
+no arbitrary audio, volume, TTS, microphone-byte, or live microphone-stream
+interface. No raw-actuation, destructive, network-changing, update, reboot, or
+shutdown command was live-tested.
 
 The reusable verifier is
 [`tools/live_verify_safe_commands.py`](../tools/live_verify_safe_commands.py).

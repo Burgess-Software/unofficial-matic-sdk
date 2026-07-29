@@ -9,13 +9,22 @@ from matic_sdk.maps import (
     MapCollectionState,
     MapDecodeError,
     build_mosaics,
+    classification_counts,
     decode_map_event,
     parse_collection_event,
     save_mosaics,
     split_grpc_frames,
     transpose_x_major,
 )
-from matic_sdk.models.maps import MapTile
+from matic_sdk.models.maps import (
+    GeometricOccupancy,
+    MapClassification,
+    MapTile,
+    MapValueKind,
+    SemanticsKind,
+    SemanticsOverrideMapValue,
+    UnknownMapValue,
+)
 from tests._map_fixtures import (
     collection_event,
     compressed_payload,
@@ -180,6 +189,58 @@ def test_semantic_r8_targets_apply_target_specific_masks() -> None:
     assert semantics.tiles[0].image.getpixel((0, 1)) == 0
     assert override.tiles[0].image.getpixel((0, 0)) == 255
     assert override.tiles[0].image.getpixel((0, 1)) == 255
+    semantics_values = semantics.tiles[0].classification
+    override_values = override.tiles[0].classification
+    assert semantics_values is not None
+    assert override_values is not None
+    assert semantics_values.value_at(0, 0) is SemanticsKind.CARPET
+    assert semantics_values.value_at(0, 1) is SemanticsKind.POOP
+    assert override_values.value_at(0, 0) is SemanticsOverrideMapValue.CARPET_ALLOW_WIRE
+    assert (
+        override_values.value_at(0, 1) is SemanticsOverrideMapValue.CARPET_DISALLOW_WIRE
+    )
+
+
+def test_semantics_preserve_entities_and_unknown_firmware_codes() -> None:
+    plane = bytes([3, 5, 6]) + bytes(1021)
+    event = parse_collection_event(
+        collection_event(page_x=0, payload=r8_payload(plane), sequence=1)
+    )
+
+    decoded = decode_map_event(event, target="map_semantics")
+    classification = decoded.tiles[0].classification
+
+    assert classification is not None
+    assert classification.kind is MapValueKind.SEMANTICS
+    assert classification.code_at(0, 0) == 3
+    assert classification.value_at(0, 0) is SemanticsKind.WIRE
+    assert classification.value_at(0, 1) is SemanticsKind.PET
+    assert classification.value_at(0, 2) == UnknownMapValue(6)
+    assert classification.counts[SemanticsKind.UNKNOWN] == 1021
+    assert classification.counts[UnknownMapValue(6)] == 1
+    assert classification.named_counts["wire"] == 1
+    assert classification.named_counts["pet"] == 1
+    assert classification.named_counts["unknown_6"] == 1
+    assert classification_counts(decoded.tiles, MapValueKind.SEMANTICS) == dict(
+        classification.counts
+    )
+
+    with pytest.raises(IndexError, match="outside 32x32"):
+        classification.value_at(32, 0)
+    with pytest.raises(TypeError, match="coordinates must be integers"):
+        classification.value_at(0.5, 0)  # type: ignore[arg-type]
+
+
+def test_map_classification_rejects_mutable_or_invalid_codes() -> None:
+    with pytest.raises(TypeError, match="immutable bytes"):
+        MapClassification(
+            MapValueKind.SEMANTICS,
+            bytearray(1024),  # type: ignore[arg-type]
+        )
+    with pytest.raises(TypeError, match="must be an integer"):
+        UnknownMapValue(True)
+    with pytest.raises(ValueError, match="fit in one byte"):
+        UnknownMapValue(256)
 
 
 def test_integrated_map_decodes_without_optional_override_plane() -> None:
@@ -199,6 +260,32 @@ def test_integrated_map_decodes_without_optional_override_plane() -> None:
     assert decoded.tiles[0].image.getpixel((0, 0)) == 32
     assert decoded.tiles[2].image.getpixel((0, 0)) == 255
     assert decoded.tiles[3].image.getbbox() is None
+    occupancy = decoded.tiles[1].classification
+    semantics = decoded.tiles[2].classification
+    override = decoded.tiles[3].classification
+    assert occupancy is not None
+    assert semantics is not None
+    assert override is not None
+    assert occupancy.value_at(0, 0) is GeometricOccupancy.UNKNOWN
+    assert occupancy.value_at(0, 1) is GeometricOccupancy.FREE
+    assert semantics.value_at(0, 0) is SemanticsKind.CARPET
+    assert override.value_at(0, 0) is SemanticsOverrideMapValue.UNSET
+
+
+def test_integrated_map_preserves_optional_semantics_override_plane() -> None:
+    event = parse_collection_event(
+        collection_event(
+            page_x=0,
+            payload=integrated_payload(include_override=True),
+            sequence=1,
+        )
+    )
+
+    decoded = decode_map_event(event)
+    override = decoded.tiles[3].classification
+
+    assert override is not None
+    assert override.value_at(0, 0) is SemanticsOverrideMapValue.CARPET_DISALLOW_WIRE
 
 
 def test_integrated_map_never_synthesizes_layers_without_required_data() -> None:

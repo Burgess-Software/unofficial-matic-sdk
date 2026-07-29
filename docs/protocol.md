@@ -63,7 +63,7 @@ field 2 is absent in that case; the target in field 1 and `hermes-target`
 metadata still identify the command. This canonical omission is not treated as
 a missing payload.
 
-Ten codecs have the separate SDK live-delivery flag. The remaining 55 exact
+Twelve codecs have the separate SDK live-delivery flag. The remaining 53 exact
 formats, including raw motors, have offline wire proof only.
 Joystick sending is available directly through `robot.commands.joystick()`.
 Each call sends once; the SDK adds no background watchdog, automatic zero, or
