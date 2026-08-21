@@ -150,6 +150,13 @@ List all 49 accepted targets:
 matic collections list
 ```
 
+The registry contains 43 targets verified against live robot collection
+responses and six app-static targets recovered from signed Stable 172 client
+bindings: `voice_available`, `user_audio_recording_state`,
+`deep_mop_override_setting_state`, `water_flow_override_state`, `time_zone`,
+and `bag_pass_status`. App-static targets use lossless decoders and remain
+separately labeled until their live delivery and schemas are captured.
+
 Stream privacy-preserving event metadata:
 
 ```bash
@@ -351,9 +358,15 @@ Common methods include:
 | Cleaning | `normal_coverage()`, `stain_mode()`, `reprioritize_coverage()` |
 | Maps | `build_partition()`, room edit methods, zone/semantic/sink-location methods |
 | Schedules | `add_or_modify_schedule()`, `toggle_schedule()`, `remove_schedule()` |
-| Speaker and voice | `set_jukebox_track()`, `stop_jukebox()`, `set_voice_enabled()` |
-| Settings | `set_binary_setting()`, `set_auto_record_voice_enabled()` |
-| Cleaning mechanisms | `set_raw_motors()` |
+| Speaker and voice | `set_jukebox_track()`, `stop_jukebox()`, `set_voice_enabled()`, `set_user_audio_recording()` |
+| Settings | `set_binary_setting()`, `set_auto_record_voice_enabled()`, `set_deep_mop_override_enabled()`, `set_water_flow_override()` |
+| Cleaning mechanisms | `set_raw_motors()`, `resolve_sweeper_maintenance()` |
+| Notifications | `register_live_activity()` |
+
+`register_live_activity()` sends sensitive app notification credentials over
+Hermes. It is notification plumbing rather than robot telemetry or control.
+The SDK does not persist those credentials and hides them from object
+representations and audit records.
 
 Each `joystick()` call sends one velocity command. The SDK does not repeat it,
 expire it, send zero, or Stop automatically:
