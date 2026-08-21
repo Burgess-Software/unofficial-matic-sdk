@@ -21,6 +21,14 @@ from matic_sdk import decode_collection_payload
 state = decode_collection_payload("kabuki_state", saved_payload)
 ```
 
+Stable 172's native client also exposes optional Cues telemetry on
+`RobotStatusCollectionModel`: `voice_status`, `gesture_status`,
+`voice_intent_category`, `voice_intent`, `is_recording`, and
+`is_following_person`. `is_recording` is decoded from the captured state-code
+transition; voice, gesture, intent, and following-person fields remain `None`
+when their source event is unavailable. The model retains the original
+protobuf fields in either case.
+
 For a merged `TelemetrySession`, `update.model` decodes the new event and
 `update.latest_models` returns the most recent friendly model for every target
 seen so far.
@@ -46,7 +54,10 @@ details, and pairing codes are omitted from model representations.
 
 ## Registered targets
 
-All 43 known collection targets have a stable model type:
+The SDK accepts 43 live-verified targets and two app-static targets discovered
+in the signed Stable 172 Android client. Every accepted target has a stable
+model type. App-static targets remain explicitly distinguished until a live
+collection capture confirms their delivery and value schema.
 
 | Target | Model | Friendly values |
 | --- | --- | --- |
@@ -93,6 +104,8 @@ All 43 known collection targets have a stable model type:
 | `recording_videos` | `MediaCollectionModel` | Validated retained image/video assets |
 | `app_customer_info` | `CustomerInfoCollectionModel` | Hidden customer email |
 | `jukebox_state` | `JukeboxCollectionModel` | Selected seasonal track |
+| `voice_available` | `BinarySettingCollectionModel` | Stable 172 app-static Cues availability flag |
+| `user_audio_recording_state` | `StructuredCollectionModel` | Stable 172 app-static, lossless diagnostic audio state pending live schema confirmation |
 
 The public mapping `matic_sdk.COLLECTION_MODEL_TYPES` lets applications inspect
 the expected type for a target without decoding an event.

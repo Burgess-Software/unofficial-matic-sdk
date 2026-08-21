@@ -12,6 +12,12 @@ from matic_sdk.collection_models import (
 )
 from matic_sdk.models.collections import (
     BinarySettingCollectionModel,
+    CuesGestureIntent,
+    CuesGestureStatus,
+    CuesIntentCategory,
+    CuesRecordingIntent,
+    CuesTaskIntent,
+    CuesVoiceStatus,
     JukeboxCollectionModel,
     MapTileCollectionModel,
     MediaCollectionModel,
@@ -67,6 +73,25 @@ def test_unknown_target_uses_lossless_structured_model() -> None:
     assert decoded.schema_name == "future_collection"
     assert decoded.fields[0].number == 27
     assert decoded.raw_payload == payload
+
+
+def test_stable_172_app_static_targets_are_registered_losslessly() -> None:
+    availability = decode_collection_payload(
+        "voice_available",
+        encode_varint_field(1, 1),
+    )
+    recording_payload = encode_bytes_field(7, b"future-recording-state")
+    recording = decode_collection_payload(
+        "user_audio_recording_state",
+        recording_payload,
+    )
+
+    assert isinstance(availability, BinarySettingCollectionModel)
+    assert availability.enabled is True
+    assert isinstance(recording, StructuredCollectionModel)
+    assert recording.schema_name == "user_audio_recording_state"
+    assert recording.raw_payload == recording_payload
+    assert recording.fields[0].number == 7
 
 
 def test_raw_event_decode_convenience_preserves_operation_and_payload() -> None:
@@ -141,7 +166,9 @@ def test_map_model_reuses_the_proven_tile_decoder() -> None:
 
 def test_robot_status_and_version_models_expose_live_control_feedback() -> None:
     states = bytes((104, 120))
-    status_payload = encode_bytes_field(1, states) + _float32(9, 0.73)
+    status_payload = (
+        encode_bytes_field(1, states) + encode_varint_field(1, 211) + _float32(9, 0.73)
+    )
 
     status = decode_collection_payload("kabuki_state", status_payload)
     version = decode_collection_payload(
@@ -152,15 +179,28 @@ def test_robot_status_and_version_models_expose_live_control_feedback() -> None:
     )
 
     assert isinstance(status, RobotStatusCollectionModel)
-    assert status.state_codes == (104, 120)
+    assert status.state_codes == (104, 120, 211)
     assert status.activity == "paused"
     assert status.is_paused
     assert status.is_navigating
     assert status.battery_percentage == 73
+    assert status.is_recording
+    assert status.is_following_person is None
+    assert status.voice_status is None
+    assert status.gesture_status is None
     assert isinstance(version, VersionCollectionModel)
     assert version.version_name == "v200.1"
     assert version.profile_name == "stable"
     assert version.protocol_version == 26
+
+
+def test_stable_172_cues_enums_are_public_string_values() -> None:
+    assert CuesVoiceStatus.LISTENING_FOR_WAKE_WORD == "listening_for_wake_word"
+    assert CuesGestureStatus.POINTED_TARGET_ACCEPTED == "pointed_target_accepted"
+    assert CuesIntentCategory.GESTURE == "gesture"
+    assert CuesTaskIntent.REDO_LAST_CLEAN == "redo_last_clean"
+    assert CuesGestureIntent.FOLLOW_PERSON == "follow_person"
+    assert CuesRecordingIntent.RECORD_DOA == "record_doa"
 
 
 def test_schedule_and_media_models_have_named_fields() -> None:

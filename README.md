@@ -30,7 +30,7 @@ authenticated local-network service without a cloud relay.
 | Area | SDK capabilities |
 | --- | --- |
 | Enrollment | Pair a Linux computer over Bluetooth and retain a private per-client `BotToken` |
-| Live data | Decode 43 collection targets covering pose, operating state, motors, missions, schedules, history, media, settings, and maps |
+| Live data | Decode 43 live-verified and two Stable 172 app-static collection targets covering pose, operating state, Cues availability, motors, missions, schedules, history, media, settings, and maps |
 | Motion | Stop, pause, stay put, dock, drive with direct joystick velocities, or navigate to a mission pose |
 | Cleaning | Run mapped-room coverage, reprioritize an active plan, or clean a drawn dry-stain/wet-spill area |
 | Maps | Build partitions; edit rooms, no-go/drive-only/stair zones, semantics, and sink-summon locations |
@@ -144,7 +144,7 @@ an `UnverifiedProtocolVersionWarning` instead of blocking the write.
 
 ## Read live robot data
 
-List all 43 accepted targets:
+List all 45 accepted targets:
 
 ```bash
 matic collections list
@@ -374,6 +374,7 @@ settings, and raw-motor examples are in the
 - [Troubleshooting first connection and captures](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/troubleshooting.md)
 - [Collection model reference](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/collections.md)
 - [Command verification ledger](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/command-verification.md)
+- [Stable 172 client-surface audit](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/stable-172-audit.md)
 - [Control behavior and caller responsibility](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/safety.md)
 - [Protocol notes](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/protocol.md)
 - [Research method](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/research-method.md)

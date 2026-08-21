@@ -19,8 +19,10 @@ unzip -p research/split_config.arm64_v8a.apk \
   lib/arm64-v8a/libmegazord.so > research/libmegazord.so
 ```
 
-The analyzed release was app version 1.151.0. The ARM64 split contained an
-approximately 32 MB AArch64 ELF shared library named `libmegazord.so`.
+The original analyzed release was app version 1.151.0. The ARM64 split
+contained an approximately 32 MB AArch64 ELF shared library named
+`libmegazord.so`. A later comparison against the same-signed Stable 172 release
+is recorded in the [Stable 172 client-surface audit](stable-172-audit.md).
 
 That library is phone-side client code, not robot firmware. It was especially
 useful because it was not stripped: the release still retained many Rust

@@ -579,7 +579,7 @@ def status(
 
 @collection_app.command("list")
 def list_collections() -> None:
-    """List the 43 live-verified read-only collection targets."""
+    """List accepted live-verified and app-static read-only targets."""
 
     for group, targets in TARGET_GROUPS.items():
         typer.echo(f"{group}:")

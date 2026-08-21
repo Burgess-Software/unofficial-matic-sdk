@@ -767,6 +767,7 @@ def _decode_robot_status(context: _DecodeContext) -> RobotStatusCollectionModel:
         is_charging=107 in state_set,
         is_navigating=bool(state_set & _RETURNING_CODES),
         is_cleaning=bool(state_set & _CLEANING_CODES),
+        is_recording=211 in state_set,
         time_until_idle_dock=_duration(_message(context.fields, 18)),
     )
 
@@ -1060,6 +1061,8 @@ _decoders: dict[str, _Decoder] = {
     "recording_videos": _decode_media,
     "app_customer_info": _decode_customer,
     "jukebox_state": _decode_jukebox,
+    "voice_available": _decode_binary,
+    "user_audio_recording_state": _decode_structured,
 }
 if frozenset(_decoders) != KNOWN_TARGET_SET:
     missing = sorted(KNOWN_TARGET_SET - _decoders.keys())
@@ -1109,6 +1112,8 @@ COLLECTION_MODEL_TYPES = MappingProxyType(
         "recording_videos": MediaCollectionModel,
         "app_customer_info": CustomerInfoCollectionModel,
         "jukebox_state": JukeboxCollectionModel,
+        "voice_available": BinarySettingCollectionModel,
+        "user_audio_recording_state": StructuredCollectionModel,
     }
 )
 if frozenset(COLLECTION_MODEL_TYPES) != KNOWN_TARGET_SET:
