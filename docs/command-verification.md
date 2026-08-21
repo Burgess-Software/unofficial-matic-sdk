@@ -1,7 +1,7 @@
 # Command verification ledger
 
-This is the protocol-25 command boundary implemented by the SDK: 65 documented
-intents, 65 exact `wire_verified` formats and registered codecs, and 12 command
+This is the protocol-25 command boundary implemented by the SDK: 70 documented
+intents, 70 exact `wire_verified` formats and registered codecs, and 12 command
 intents with live delivery evidence. `Wire / yes` means the protobuf body,
 Hermes target, and surrounding channel envelope are exact and the codec is
 registered.
@@ -55,6 +55,7 @@ explicitly says yes.
 | `device.new_mop_roll` | `new_mop_roll_override_command` | Wire / yes | No | persistent | Offline native-serializer golden proof only |
 | `device.clear_calibration` | `clear_online_calib_command` | Wire / yes | No | destructive | Destructive; offline wire proof only |
 | `device.configure_shipping` | `configure_shipping_command` | Wire / yes | No | destructive | Destructive; offline wire proof only |
+| `device.sweeper_maintenance_resolve` | `sweeper_maintenance_command` | Wire / yes | No | persistent | Stable 172 retained Resolve-arm serializer proof; not live-tested |
 | `settings.child_lock` | `child_lock_enabled_command` | Wire / yes | Yes | persistent | Same-value write acknowledged; no transition claimed |
 | `settings.pet_waste_avoidance` | `petwaste_enabled_command` | Wire / yes | Yes | persistent | Same-value write acknowledged; no transition claimed |
 | `settings.voice` | `voice_enabled_command` | Wire / yes | Yes | persistent | True and false writes were acknowledged on 2026-07-29, but retained state stayed false |
@@ -62,6 +63,8 @@ explicitly says yes.
 | `settings.matter_pairing` | `matter_pairing_command` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
 | `settings.preview_release` | `request_preview_release_command` | Wire / yes | No | persistent | Offline native-serializer golden proof only |
 | `settings.jukebox` | `jukebox_command` | Wire / yes | Yes | persistent | Jingle Bells start and stop were acknowledged on 2026-07-29, retained state transitioned both ways, and the nearby owner heard the track |
+| `settings.deep_mop_override` | `deep_mop_override_setting_command` | Wire / yes | No | persistent | Stable 172 sender-to-serializer false/true mapping proven offline |
+| `settings.water_flow_override` | `water_flow_override_command` | Wire / yes | No | persistent | Stable 172 nested fixed32 serializer proven offline; no narrower supported range was recovered |
 | `schedule.add_or_modify` | `edit_schedule` | Wire / yes | No | persistent | Full 1,905-byte standard event and custom-area structures proven offline |
 | `schedule.remove` | `edit_schedule` | Wire / yes | No | destructive | Destructive; offline wire proof only |
 | `schedule.toggle` | `edit_schedule` | Wire / yes | No | persistent | Offline native-serializer golden proof only |
@@ -73,9 +76,11 @@ explicitly says yes.
 | `media.flush_rolling_buffer` | `recording_command` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
 | `media.confirm_save` | `recording_upload_confirmation` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
 | `media.confirm_delete` | `recording_upload_confirmation` | Wire / yes | No | destructive | Destructive; offline wire proof only |
+| `media.user_audio_recording` | `user_audio_recording_command` | Wire / yes | No | sensitive | Stable 172 Idle/Ambient/DOA/Wake goldens proven offline; changes state and carries no audio samples |
 | `telemetry.uploader_config` | `uploader_config_command` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
 | `telemetry.support_ssh_permission` | `user_tunnel_ssh_permission_command` | Wire / yes | No | sensitive | Offline wire proof only; no shell access implied |
 | `telemetry.push_notification_subscription` | `subscribe_push_notifications` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
+| `telemetry.live_activity_registration` | `live_activity_registration` | Wire / yes | No | sensitive | Stable 172 start/update token envelopes proven offline; token fields are hidden and audit-redacted |
 | `lifecycle.update` | `update_command` | Wire / yes | No | destructive | Destructive; offline wire proof only |
 | `lifecycle.reboot` | `reboot_command` | Wire / yes | No | destructive | Destructive; offline wire proof only |
 | `lifecycle.shutdown` | `reboot_command` | Wire / yes | No | destructive | Destructive; offline wire proof only |

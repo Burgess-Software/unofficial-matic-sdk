@@ -47,7 +47,14 @@ def collection_response(sequence: int, payload: bytes = b"value") -> bytes:
 
 def test_verified_target_inventory_and_official_initial_request() -> None:
     assert len(KNOWN_TARGETS) == len(set(KNOWN_TARGETS))
-    assert {"voice_available", "user_audio_recording_state"} <= set(KNOWN_TARGETS)
+    assert {
+        "voice_available",
+        "user_audio_recording_state",
+        "deep_mop_override_setting_state",
+        "water_flow_override_state",
+        "time_zone",
+        "bag_pass_status",
+    } <= set(KNOWN_TARGETS)
     assert len(LIVE_VERIFIED_TARGETS) == 43
     assert set(APP_STATIC_TARGETS).isdisjoint(LIVE_VERIFIED_TARGETS)
     assert initial_request("latest_pose").hex() == (

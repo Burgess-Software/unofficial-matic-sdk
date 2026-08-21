@@ -54,7 +54,7 @@ details, and pairing codes are omitted from model representations.
 
 ## Registered targets
 
-The SDK accepts 43 live-verified targets and two app-static targets discovered
+The SDK accepts 43 live-verified targets and six app-static targets discovered
 in the signed Stable 172 Android client. Every accepted target has a stable
 model type. App-static targets remain explicitly distinguished until a live
 collection capture confirms their delivery and value schema.
@@ -106,6 +106,10 @@ collection capture confirms their delivery and value schema.
 | `jukebox_state` | `JukeboxCollectionModel` | Selected seasonal track |
 | `voice_available` | `BinarySettingCollectionModel` | Stable 172 app-static Cues availability flag |
 | `user_audio_recording_state` | `StructuredCollectionModel` | Stable 172 app-static, lossless diagnostic audio state pending live schema confirmation |
+| `deep_mop_override_setting_state` | `StructuredCollectionModel` | Stable 172 app-static, lossless deep-mop override state |
+| `water_flow_override_state` | `StructuredCollectionModel` | Stable 172 app-static, lossless water-flow factor state |
+| `time_zone` | `StructuredCollectionModel` | Stable 172 app-static, lossless robot timezone state |
+| `bag_pass_status` | `StructuredCollectionModel` | Stable 172 app-static, lossless subscription/pass status |
 
 The public mapping `matic_sdk.COLLECTION_MODEL_TYPES` lets applications inspect
 the expected type for a target without decoding an event.

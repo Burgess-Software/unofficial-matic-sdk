@@ -93,6 +93,17 @@ def test_stable_172_app_static_targets_are_registered_losslessly() -> None:
     assert recording.raw_payload == recording_payload
     assert recording.fields[0].number == 7
 
+    for target in (
+        "deep_mop_override_setting_state",
+        "water_flow_override_state",
+        "time_zone",
+        "bag_pass_status",
+    ):
+        decoded = decode_collection_payload(target, recording_payload)
+        assert isinstance(decoded, StructuredCollectionModel)
+        assert decoded.schema_name == target
+        assert decoded.raw_payload == recording_payload
+
 
 def test_raw_event_decode_convenience_preserves_operation_and_payload() -> None:
     payload = encode_varint_field(1, 1)

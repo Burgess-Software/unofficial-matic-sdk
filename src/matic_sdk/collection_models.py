@@ -1063,6 +1063,10 @@ _decoders: dict[str, _Decoder] = {
     "jukebox_state": _decode_jukebox,
     "voice_available": _decode_binary,
     "user_audio_recording_state": _decode_structured,
+    "deep_mop_override_setting_state": _decode_structured,
+    "water_flow_override_state": _decode_structured,
+    "time_zone": _decode_structured,
+    "bag_pass_status": _decode_structured,
 }
 if frozenset(_decoders) != KNOWN_TARGET_SET:
     missing = sorted(KNOWN_TARGET_SET - _decoders.keys())
@@ -1114,6 +1118,10 @@ COLLECTION_MODEL_TYPES = MappingProxyType(
         "jukebox_state": JukeboxCollectionModel,
         "voice_available": BinarySettingCollectionModel,
         "user_audio_recording_state": StructuredCollectionModel,
+        "deep_mop_override_setting_state": StructuredCollectionModel,
+        "water_flow_override_state": StructuredCollectionModel,
+        "time_zone": StructuredCollectionModel,
+        "bag_pass_status": StructuredCollectionModel,
     }
 )
 if frozenset(COLLECTION_MODEL_TYPES) != KNOWN_TARGET_SET:

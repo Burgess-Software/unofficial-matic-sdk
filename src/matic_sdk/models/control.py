@@ -514,6 +514,17 @@ class DeviceCommand(ControlCommand):
         return f"{self.command_prefix}.{self.action.value}"
 
 
+@dataclass(frozen=True, slots=True)
+class SweeperMaintenanceCommand(ControlCommand):
+    """Resolve the robot's current sweeper-maintenance condition."""
+
+    command_prefix: ClassVar[str] = "device"
+
+    @property
+    def command_key(self) -> str:
+        return f"{self.command_prefix}.sweeper_maintenance_resolve"
+
+
 class SettingAction(StrEnum):
     CHILD_LOCK = "child_lock"
     PET_WASTE_AVOIDANCE = "pet_waste_avoidance"
@@ -540,6 +551,30 @@ class SettingsCommand(ControlCommand):
     @property
     def command_key(self) -> str:
         return f"{self.command_prefix}.{self.action.value}"
+
+
+@dataclass(frozen=True, slots=True)
+class DeepMopOverrideCommand(ControlCommand):
+    """Enable or disable the retained deep-mop override."""
+
+    enabled: bool
+    command_prefix: ClassVar[str] = "settings"
+
+    @property
+    def command_key(self) -> str:
+        return f"{self.command_prefix}.deep_mop_override"
+
+
+@dataclass(frozen=True, slots=True)
+class WaterFlowOverrideCommand(ControlCommand):
+    """Set the robot's retained water-flow multiplier."""
+
+    factor: float
+    command_prefix: ClassVar[str] = "settings"
+
+    @property
+    def command_key(self) -> str:
+        return f"{self.command_prefix}.water_flow_override"
 
 
 class ScheduleAction(StrEnum):
@@ -678,6 +713,30 @@ class MediaCommand(ControlCommand):
         return f"{self.command_prefix}.{self.action.value}"
 
 
+class AudioRecordingMode(StrEnum):
+    """Microphone-processing modes exposed by the Stable 172 client."""
+
+    AMBIENT = "ambient"
+    DIRECTION_OF_ARRIVAL = "direction_of_arrival"
+    WAKE_WORD = "wake_word"
+
+
+@dataclass(frozen=True, slots=True)
+class UserAudioRecordingCommand(ControlCommand):
+    """Start one audio-processing mode, or stop it with ``mode=None``.
+
+    This command changes robot recording state. It does not contain audio and
+    does not imply that recorded microphone data can be downloaded.
+    """
+
+    mode: AudioRecordingMode | None
+    command_prefix: ClassVar[str] = "media"
+
+    @property
+    def command_key(self) -> str:
+        return f"{self.command_prefix}.user_audio_recording"
+
+
 class TelemetryAction(StrEnum):
     UPLOADER_CONFIG = "uploader_config"
     SUPPORT_SSH_PERMISSION = "support_ssh_permission"
@@ -696,6 +755,35 @@ class TelemetryCommand(ControlCommand):
     @property
     def command_key(self) -> str:
         return f"{self.command_prefix}.{self.action.value}"
+
+
+@dataclass(frozen=True, slots=True)
+class LiveActivityStartToken:
+    """Sensitive notification credentials for starting a live activity."""
+
+    fcm_token: str = field(repr=False)
+    push_to_start_token: str = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class LiveActivityUpdateToken:
+    """Sensitive notification credentials for updating a live activity."""
+
+    activity_id: UUID
+    push_token: str = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class LiveActivityRegistrationCommand(ControlCommand):
+    """Register start or update credentials for app live activities."""
+
+    device_id: str = field(repr=False)
+    token: LiveActivityStartToken | LiveActivityUpdateToken = field(repr=False)
+    command_prefix: ClassVar[str] = "telemetry"
+
+    @property
+    def command_key(self) -> str:
+        return f"{self.command_prefix}.live_activity_registration"
 
 
 class LifecycleAction(StrEnum):
@@ -773,6 +861,7 @@ class CommandReceipt:
 
 __all__ = [
     "AddZones",
+    "AudioRecordingMode",
     "CleaningAction",
     "CleaningCommand",
     "CleaningFloor",
@@ -792,6 +881,7 @@ __all__ = [
     "CoveragePlanGoal",
     "CoverageSetting",
     "CustomScheduleTarget",
+    "DeepMopOverrideCommand",
     "DeviceAction",
     "DeviceCommand",
     "DrawnCircle",
@@ -800,6 +890,9 @@ __all__ = [
     "JukeboxTrack",
     "LifecycleAction",
     "LifecycleCommand",
+    "LiveActivityRegistrationCommand",
+    "LiveActivityStartToken",
+    "LiveActivityUpdateToken",
     "MapEnvironmentAction",
     "MapEnvironmentCommand",
     "MapPoint",
@@ -834,12 +927,15 @@ __all__ = [
     "SplitRoom",
     "StainMode",
     "StandardScheduleTarget",
+    "SweeperMaintenanceCommand",
     "TelemetryAction",
     "TelemetryCommand",
     "TransportAckStatus",
     "TransportAcknowledgement",
     "UserAction",
+    "UserAudioRecordingCommand",
     "UserCommand",
+    "WaterFlowOverrideCommand",
     "Weekday",
     "WifiAction",
     "WifiCommand",

@@ -40,16 +40,16 @@ Stable 172's Kabuki subscription surface adds six property targets.
 | --- | --- | --- |
 | `voice_available` | `BinaryState(enabled: bool)` | Registered as app-static typed telemetry |
 | `user_audio_recording_state` | `Idle` or `Recording(AudioRecordingMode)` | Registered app-static and losslessly decoded pending a captured schema |
-| `deep_mop_override_setting_state` | `DeepMopOverrideEnabledState(enabled: bool)` | Audited candidate; not registered without wire confirmation |
-| `water_flow_override_state` | `WaterFlowOverrideState(factor: float32)` | Audited candidate; not registered without wire confirmation |
-| `time_zone` | `TimeZoneState(TimeZone)` | Audited candidate; not registered without wire confirmation |
-| `bag_pass_status` | `NotOwned`, `Active`, `ExpiringSoon`, or `Expired`; owned states carry a timestamp | Audited candidate; not registered without wire confirmation |
+| `deep_mop_override_setting_state` | `DeepMopOverrideEnabledState(enabled: bool)` | Registered app-static with lossless structured decoding |
+| `water_flow_override_state` | `WaterFlowOverrideState(factor: float32)` | Registered app-static with lossless structured decoding |
+| `time_zone` | `TimeZoneState(TimeZone)` | Registered app-static with lossless structured decoding |
+| `bag_pass_status` | `NotOwned`, `Active`, `ExpiringSoon`, or `Expired`; owned states carry a timestamp | Registered app-static with lossless structured decoding |
 
-The first two targets are accepted by this SDK because their names and
-app-facing classifications are exact and their decoders preserve every raw
-field. They remain labeled app-static rather than live-verified. The other
-four are documented here instead of being silently treated as established
-wire schemas.
+All six targets are accepted because their names and app-facing classifications
+are exact and their structured decoders preserve every raw field. They remain
+labeled app-static rather than live-verified. Only `voice_available` has a
+specialized boolean decoder; the other targets deliberately remain lossless
+structured models until owner-authorized captures prove their value schemas.
 
 Stable 172 also removes `requested_preview_release_state` and
 `fcm_device_group` from its compact app subscription table. That establishes
@@ -103,11 +103,11 @@ Stable 172 adds these exact native sender surfaces and target strings.
 
 | Sender operation | Hermes target | App-facing input | Publication decision |
 | --- | --- | --- | --- |
-| `sendUserAudioRecordingCommand` | `user_audio_recording_command` | `Idle` or `Recording(Ambient \| DirectionOfArrival \| WakeWord)` | Hold until exact serializer goldens are recovered |
-| `sendDeepMopOverrideEnableCommand` | `deep_mop_override_setting_command` | Boolean enable | Hold until exact wire proof |
-| `sendWaterFlowOverrideCommand` | `water_flow_override_command` | `float32` factor | Hold until exact wire proof and supported range are known |
-| `sendSweeperMaintenanceResolveCommand` | `sweeper_maintenance_command` | Unit/empty resolve request | Hold until exact envelope proof |
-| `sendLiveActivityRegistrationCommand` | `live_activity_registration` | Device ID and notification start/update tokens | Out of the robot SDK's local-control scope |
+| `sendUserAudioRecordingCommand` | `user_audio_recording_command` | `Idle` or `Recording(Ambient \| DirectionOfArrival \| WakeWord)` | Registered with four exact native goldens |
+| `sendDeepMopOverrideEnableCommand` | `deep_mop_override_setting_command` | Boolean enable | Registered with exact false/true oneof mapping |
+| `sendWaterFlowOverrideCommand` | `water_flow_override_command` | `float32` factor | Registered for finite float32 values; no narrower app range was recovered |
+| `sendSweeperMaintenanceResolveCommand` | `sweeper_maintenance_command` | Unit/empty resolve request | Registered with exact Resolve-arm envelope |
+| `sendLiveActivityRegistrationCommand` | `live_activity_registration` | Device ID and notification start/update tokens | Registered as sensitive notification plumbing with hidden token representations |
 
 The cleaning-motor sender moved from the removed
 `MechanicalCommandSender` to `KabukiCommandSender`; the existing
@@ -120,8 +120,9 @@ changes, not enough evidence by themselves to retire an existing robot codec.
 
 Live-activity registration contains cloud notification credentials: a start
 token carries FCM and push-to-start tokens, while an update token carries a
-live-activity ID and push token. It is notification plumbing rather than local
-robot telemetry, so this SDK should not accept or store those tokens.
+live-activity ID and push token. The SDK accepts them only as an explicit
+sensitive command: token fields are excluded from representations and command
+audit records, and the SDK does not persist them.
 
 ## `user_audio_recording_command` boundary
 
@@ -135,13 +136,20 @@ UserAudioRecording = Idle
 ```
 
 The app binding fixes the mode order as ambient, direction of arrival, and
-wake word, with zero-based UniFFI discriminants 0, 1, and 2. Native conversion
-evidence confirms a protobuf-backed command, but the serializer is inlined
-into its asynchronous send path. Static analysis
-cannot yet distinguish an explicit empty idle arm from an empty top-level
-message, or a direct enum arm from a nested recording message. Those choices
-produce different valid-looking byte strings. Likely bytes are not golden
-bytes, so no encoder is registered from this inference.
+wake word, with zero-based UniFFI discriminants 0, 1, and 2. Stable 172 retains
+both the high-level-to-protobuf conversion and the concrete generated
+`ProtoFormat::value_to_bytes` implementation. Tracing the sender through those
+functions proves the exact bodies:
+
+```text
+Idle                 12 00
+Ambient              08 01
+DirectionOfArrival   08 02
+WakeWord             08 03
+```
+
+The matching high-level decoder rejects enum zero and accepts protobuf modes
+1 through 3 in that order, independently confirming the mode mapping.
 
 The command changes recording control state; it does not carry audio samples.
 The matching property can report the requested mode, but neither binding nor
@@ -150,18 +158,16 @@ wake-word microphone data becomes downloadable. Publication must not claim an
 audio retrieval feature until a separate owner-authorized capture demonstrates
 one.
 
-To publish the command safely, the remaining proof is narrow:
-
-1. execute the Stable 172 native serializer offline for all four variants, or
-   capture the official client's exact channel request without retaining audio;
-2. reproduce each inner protobuf and `ChannelRequest` byte for byte;
-3. add golden encoder tests and a risk-labeled registry entry;
-4. keep live delivery and returned-audio claims separate from wire proof.
+The SDK reproduces each inner protobuf and canonical `ChannelRequest`, pins all
+four variants in golden tests, and labels the command sensitive. This passes
+the wire-verification standard without sending a command or retaining audio.
+Live delivery and returned-audio claims remain explicitly separate.
 
 ## Result
 
-This release provides enough evidence to publish the two read-side targets and
-the Cues names without inventing wire fields. It does not yet provide enough
-evidence to publish the four new robot command codecs. The remaining read and
-command candidates are now explicitly cataloged so a future capture or offline
-serializer run can promote them without repeating the client-surface audit.
+This release provides enough evidence to publish all six app-static read-side
+targets losslessly, the Cues names, and all five command-side additions. Exact
+retained serializers prove the command bodies; none were sent to a robot during
+the audit. Read models remain app-static and structured where a live value
+schema has not yet been captured, and command live-delivery status remains
+false until a separate bounded owner-authorized test occurs.

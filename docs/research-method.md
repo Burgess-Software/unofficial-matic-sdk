@@ -126,10 +126,10 @@ claim of access to the robot's full SLAM volume, TSDF, ESDF, or triangle mesh.
 
 ## Command wire evidence
 
-Static tracing recovered 65 command intents and their Hermes targets. Continued
+Static tracing recovered 70 command intents and their Hermes targets. Continued
 tracing through concrete conversion and generated Prost encoding paths, plus
 independent reconstruction and byte-level golden fixtures, produced exact wire
-formats for all 65, all of which have registered codecs. The public UniFFI
+formats for all 70, all of which have registered codecs. The public UniFFI
 variant numbers were not protobuf tags; the trace followed their lift into
 Rust enum discriminants, concrete protocol types, and generated encoders.
 

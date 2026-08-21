@@ -269,6 +269,6 @@ exercised live, and applies no device-specific range limits.
 
 ## Evidence for additional commands
 
-All 65 documented command codecs are callable through typed models. Use the
+All 70 documented command codecs are callable through typed models. Use the
 [command verification ledger](command-verification.md) to distinguish live
 delivery checks from offline native-serializer wire proof.

@@ -49,7 +49,7 @@ making the unverified compatibility visible to logs and test suites.
 `MaticConfig.command_protocol_version` has no default, so callers still provide
 the version observed from their robot.
 
-The registry documents 65 intents and exact Hermes targets. All 65 inner
+The registry documents 70 intents and exact Hermes targets. All 70 inner
 command encodings have been reconstructed completely, retained as synthetic
 golden evidence, and registered as codecs. This includes raw-motor setpoints;
 the SDK adds no device-specific range limits. `wire_verified` describes the

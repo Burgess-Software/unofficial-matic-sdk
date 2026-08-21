@@ -81,6 +81,10 @@ EXTRA_TARGETS = ("jukebox_state",)
 APP_STATIC_TARGETS = (
     "voice_available",
     "user_audio_recording_state",
+    "deep_mop_override_setting_state",
+    "water_flow_override_state",
+    "time_zone",
+    "bag_pass_status",
 )
 
 TARGET_GROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType(

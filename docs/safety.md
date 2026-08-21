@@ -21,7 +21,7 @@ Those requirements prevent sending credentials to an unverified endpoint or
 inventing unknown wire data. They are protocol and authentication boundaries,
 not operator-safety interlocks.
 
-All 65 currently documented protocol-25 commands have exact codecs. Unknown
+All 70 currently documented protocol-25 commands have exact codecs. Unknown
 commands remain unavailable because the SDK will not invent wire data. A
 different positive protocol version reuses the protocol-25 codec after emitting
 `UnverifiedProtocolVersionWarning`; that is a compatibility attempt, not new

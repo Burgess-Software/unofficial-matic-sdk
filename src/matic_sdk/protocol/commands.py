@@ -1,7 +1,7 @@
 """Evidence-backed command codec registry for Hermes protocol version 25.
 
 Static analysis recovered command type names, and offline execution of the
-official native serializers established exact payloads for all 65 documented
+official native serializers established exact payloads for all 70 documented
 protocol-25 intents. Independent protocol reconstruction, official-client
 evidence, and live testing established the surrounding ``ChannelRequest`` wire
 shape and response semantics. The default registry exposes only commands whose
@@ -24,6 +24,7 @@ from uuid import UUID, uuid4
 
 from matic_sdk.models.control import (
     AddZones,
+    AudioRecordingMode,
     CleaningAction,
     CleaningCommand,
     CleaningFloor,
@@ -42,6 +43,7 @@ from matic_sdk.models.control import (
     CoveragePlanGoal,
     CoverageSetting,
     CustomScheduleTarget,
+    DeepMopOverrideCommand,
     DeviceAction,
     DeviceCommand,
     DrawnCircle,
@@ -50,6 +52,9 @@ from matic_sdk.models.control import (
     JukeboxTrack,
     LifecycleAction,
     LifecycleCommand,
+    LiveActivityRegistrationCommand,
+    LiveActivityStartToken,
+    LiveActivityUpdateToken,
     MapEnvironmentAction,
     MapEnvironmentCommand,
     MapPoint,
@@ -81,10 +86,13 @@ from matic_sdk.models.control import (
     SplitRoom,
     StainMode,
     StandardScheduleTarget,
+    SweeperMaintenanceCommand,
     TelemetryAction,
     TelemetryCommand,
     UserAction,
+    UserAudioRecordingCommand,
     UserCommand,
+    WaterFlowOverrideCommand,
     Weekday,
     WifiAction,
     WifiCommand,
@@ -710,6 +718,110 @@ def _encode_float32_field(field_number: int, value: float) -> bytes:
         field_number,
         _float32_bits(value, field_name=f"protobuf field {field_number}"),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedUserAudioRecordingCodec:
+    """Exact Stable 172 oneof encoder for microphone-processing state."""
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        if not isinstance(command, UserAudioRecordingCommand):
+            raise TypeError("codec expects UserAudioRecordingCommand")
+        if command.mode is None:
+            payload = bytes.fromhex("1200")
+        elif isinstance(command.mode, AudioRecordingMode):
+            mode_values = {
+                AudioRecordingMode.AMBIENT: 1,
+                AudioRecordingMode.DIRECTION_OF_ARRIVAL: 2,
+                AudioRecordingMode.WAKE_WORD: 3,
+            }
+            payload = encode_varint_field(1, mode_values[command.mode])
+        else:
+            raise ValueError(
+                "media.user_audio_recording requires AudioRecordingMode or None"
+            )
+        return EncodedCommand(payload, "user_audio_recording_command")
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedWaterFlowOverrideCodec:
+    """Exact nested fixed32 encoder for the Stable 172 flow multiplier."""
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        if not isinstance(command, WaterFlowOverrideCommand):
+            raise TypeError("codec expects WaterFlowOverrideCommand")
+        factor_bits = _float32_bits(
+            command.factor,
+            field_name="settings.water_flow_override factor",
+        )
+        payload = encode_bytes_field(1, encode_fixed32_field(1, factor_bits))
+        return EncodedCommand(payload, "water_flow_override_command")
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedDeepMopOverrideCodec:
+    """Exact Stable 172 enabled/disabled oneof encoder."""
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        if not isinstance(command, DeepMopOverrideCommand):
+            raise TypeError("codec expects DeepMopOverrideCommand")
+        if not isinstance(command.enabled, bool):
+            raise ValueError("settings.deep_mop_override requires enabled: bool")
+        payload = bytes.fromhex("1200" if command.enabled else "0a00")
+        return EncodedCommand(payload, "deep_mop_override_setting_command")
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedSweeperMaintenanceCodec:
+    """Exact Stable 172 empty resolve-arm encoder."""
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        if not isinstance(command, SweeperMaintenanceCommand):
+            raise TypeError("codec expects SweeperMaintenanceCommand")
+        return EncodedCommand(bytes.fromhex("0a00"), "sweeper_maintenance_command")
+
+
+def _encode_optional_string(field_number: int, value: str) -> bytes:
+    return encode_bytes_field(field_number, value.encode()) if value else b""
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedLiveActivityRegistrationCodec:
+    """Exact Stable 172 encoder for sensitive live-activity credentials."""
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        if not isinstance(command, LiveActivityRegistrationCommand):
+            raise TypeError("codec expects LiveActivityRegistrationCommand")
+        if not isinstance(command.device_id, str):
+            raise ValueError(
+                "telemetry.live_activity_registration requires device_id: str"
+            )
+        if isinstance(command.token, LiveActivityStartToken):
+            if not isinstance(command.token.fcm_token, str) or not isinstance(
+                command.token.push_to_start_token, str
+            ):
+                raise ValueError("live-activity start credentials must be strings")
+            start = _encode_optional_string(1, command.token.fcm_token)
+            start += _encode_optional_string(2, command.token.push_to_start_token)
+            token = encode_bytes_field(1, start)
+        elif isinstance(command.token, LiveActivityUpdateToken):
+            if not isinstance(command.token.activity_id, UUID) or not isinstance(
+                command.token.push_token, str
+            ):
+                raise ValueError(
+                    "live-activity update credentials require activity_id: UUID "
+                    "and push_token: str"
+                )
+            update = encode_bytes_field(1, _wrapped_uuid(command.token.activity_id))
+            update += _encode_optional_string(2, command.token.push_token)
+            token = encode_bytes_field(2, update)
+        else:
+            raise ValueError(
+                "telemetry.live_activity_registration requires a start or update token"
+            )
+        payload = _encode_optional_string(1, command.device_id)
+        payload += encode_bytes_field(2, token)
+        return EncodedCommand(payload, "live_activity_registration")
 
 
 @dataclass(frozen=True, slots=True)
@@ -3282,6 +3394,82 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         evidence=_NATIVE_SERIALIZER_EVIDENCE,
     ),
     _spec(
+        "media.user_audio_recording",
+        CommandFamily.MEDIA,
+        CommandRisk.SENSITIVE,
+        UserAudioRecordingCommand,
+        "UserAudioRecordingCommand",
+        fields=("mode: Ambient | DirectionOfArrival | WakeWord | Idle",),
+        target="user_audio_recording_command",
+        wire_verified=True,
+        evidence=(
+            "Matic Android 1.172.1 retained Protobufable conversion and exact "
+            "ProtoFormat serializer disassembly for all four variants; changes "
+            "recording state, carries no audio, and is not live-tested"
+        ),
+    ),
+    _spec(
+        "settings.deep_mop_override",
+        CommandFamily.SETTINGS,
+        CommandRisk.PERSISTENT,
+        DeepMopOverrideCommand,
+        "DeepMopOverrideEnableCommand",
+        fields=("enabled: bool",),
+        target="deep_mop_override_setting_command",
+        wire_verified=True,
+        evidence=(
+            "Matic Android 1.172.1 sender poll path maps false/true directly "
+            "to the retained generated oneof serializer; not live-tested"
+        ),
+    ),
+    _spec(
+        "settings.water_flow_override",
+        CommandFamily.SETTINGS,
+        CommandRisk.PERSISTENT,
+        WaterFlowOverrideCommand,
+        "WaterFlowOverrideCommand",
+        fields=("factor: finite float32",),
+        target="water_flow_override_command",
+        wire_verified=True,
+        evidence=(
+            "Matic Android 1.172.1 sender poll path and retained generated "
+            "nested fixed32 serializer; the app exposes no narrower supported "
+            "range and the command is not live-tested"
+        ),
+    ),
+    _spec(
+        "device.sweeper_maintenance_resolve",
+        CommandFamily.DEVICE,
+        CommandRisk.PERSISTENT,
+        SweeperMaintenanceCommand,
+        "SweeperMaintenanceResolveCommand",
+        payload=bytes.fromhex("0a00"),
+        target="sweeper_maintenance_command",
+        wire_verified=True,
+        evidence=(
+            "Matic Android 1.172.1 sender poll path fixes the generated Resolve "
+            "oneof discriminant and exact empty-arm serializer; not live-tested"
+        ),
+    ),
+    _spec(
+        "telemetry.live_activity_registration",
+        CommandFamily.TELEMETRY,
+        CommandRisk.SENSITIVE,
+        LiveActivityRegistrationCommand,
+        "LiveActivityRegistrationCommand",
+        fields=(
+            "deviceId: String",
+            "token: Start(fcmToken, pushToStartToken) | Update(activityId, pushToken)",
+        ),
+        target="live_activity_registration",
+        wire_verified=True,
+        evidence=(
+            "Matic Android 1.172.1 Protobufable conversion and retained exact "
+            "LiveActivityRegistration generated serializer; notification "
+            "credentials are sensitive and the command is not live-tested"
+        ),
+    ),
+    _spec(
         "lifecycle.update",
         CommandFamily.LIFECYCLE,
         CommandRisk.DESTRUCTIVE,
@@ -3514,6 +3702,7 @@ COMMAND_REGISTRY = CommandRegistry(
             "clear_online_calib_command",
         ),
         "device.configure_shipping": _VerifiedConfigureShippingCodec(),
+        "device.sweeper_maintenance_resolve": _VerifiedSweeperMaintenanceCodec(),
         **{
             f"settings.{action.value}": _VerifiedBinarySettingCodec(action, target)
             for action, target in _BINARY_SETTING_TARGETS.items()
@@ -3531,6 +3720,8 @@ COMMAND_REGISTRY = CommandRegistry(
             "request_preview_release_command",
         ),
         "settings.jukebox": _VerifiedJukeboxCodec(),
+        "settings.deep_mop_override": _VerifiedDeepMopOverrideCodec(),
+        "settings.water_flow_override": _VerifiedWaterFlowOverrideCodec(),
         "schedule.add_or_modify": _VerifiedEditScheduleCodec(
             ScheduleAction.ADD_OR_MODIFY
         ),
@@ -3552,12 +3743,16 @@ COMMAND_REGISTRY = CommandRegistry(
         "media.confirm_delete": _VerifiedConfirmRecordingCodec(
             MediaAction.CONFIRM_DELETE
         ),
+        "media.user_audio_recording": _VerifiedUserAudioRecordingCodec(),
         "telemetry.uploader_config": _VerifiedUploaderConfigCodec(),
         "telemetry.support_ssh_permission": _VerifiedTelemetryBooleanCodec(
             TelemetryAction.SUPPORT_SSH_PERMISSION,
             "user_tunnel_ssh_permission_command",
         ),
         "telemetry.push_notification_subscription": (_VerifiedPushNotificationCodec()),
+        "telemetry.live_activity_registration": (
+            _VerifiedLiveActivityRegistrationCodec()
+        ),
         "lifecycle.update": _VerifiedLifecycleCodec(
             LifecycleAction.UPDATE,
             bytes.fromhex("0a00"),

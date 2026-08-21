@@ -30,15 +30,15 @@ authenticated local-network service without a cloud relay.
 | Area | SDK capabilities |
 | --- | --- |
 | Enrollment | Pair a Linux computer over Bluetooth and retain a private per-client `BotToken` |
-| Live data | Decode 43 live-verified and two Stable 172 app-static collection targets covering pose, operating state, Cues availability, motors, missions, schedules, history, media, settings, and maps |
+| Live data | Decode 43 live-verified and six Stable 172 app-static collection targets covering pose, operating state, Cues availability, motors, missions, schedules, history, media, settings, and maps |
 | Motion | Stop, pause, stay put, dock, drive with direct joystick velocities, or navigate to a mission pose |
 | Cleaning | Run mapped-room coverage, reprioritize an active plan, or clean a drawn dry-stain/wet-spill area |
 | Maps | Build partitions; edit rooms, no-go/drive-only/stair zones, semantics, and sink-summon locations |
-| Speaker and voice | Play or stop built-in seasonal tracks and send the exposed voice preference commands |
+| Speaker and voice | Play or stop built-in seasonal tracks, send voice preferences, and control the Stable 172 user-audio processing state without claiming microphone-data access |
 | Schedules and settings | Create schedules and change supported preferences through typed methods |
 | Exports | Assemble RGB/coverage/semantic maps, export sparse colored voxels as PLY, and recover retained WebP media |
 
-All 65 documented command intents have registered protocol-25 codecs. The
+All 70 documented command intents have registered protocol-25 codecs. The
 [verification ledger](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/command-verification.md)
 distinguishes commands exercised on a real robot from formats proven only
 through offline native serialization.
@@ -144,7 +144,7 @@ an `UnverifiedProtocolVersionWarning` instead of blocking the write.
 
 ## Read live robot data
 
-List all 45 accepted targets:
+List all 49 accepted targets:
 
 ```bash
 matic collections list

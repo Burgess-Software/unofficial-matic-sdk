@@ -38,8 +38,8 @@ network, settings, scheduling, media, diagnostics, update, reboot, and shutdown
 command families. The Hermes RPC and typed client-side models are static
 evidence. Each encoder in this SDK must carry its own verification level.
 
-The registry documents 65 command intents and exact Hermes targets for each.
-All 65 have exact wire formats and registered codecs for protocol 25.
+The registry documents 70 command intents and exact Hermes targets for each.
+All 70 have exact wire formats and registered codecs for protocol 25.
 Raw-motor encoding is exact and directly available without device-specific
 range limits.
 The [command verification ledger](command-verification.md)
