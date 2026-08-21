@@ -433,4 +433,4 @@ maps, recordings, and packet captures out of Git.
 
 ## License
 
-No license is granted at this stage.
+This project is licensed under the [MIT License](LICENSE).
