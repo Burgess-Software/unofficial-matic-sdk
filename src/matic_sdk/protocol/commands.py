@@ -812,7 +812,11 @@ class _VerifiedLiveActivityRegistrationCodec:
                     "live-activity update credentials require activity_id: UUID "
                     "and push_token: str"
                 )
-            update = encode_bytes_field(1, _wrapped_uuid(command.token.activity_id))
+            live_activity_id = encode_bytes_field(
+                1,
+                _wrapped_uuid(command.token.activity_id),
+            )
+            update = encode_bytes_field(1, live_activity_id)
             update += _encode_optional_string(2, command.token.push_token)
             token = encode_bytes_field(2, update)
         else:

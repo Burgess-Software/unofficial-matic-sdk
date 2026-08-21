@@ -314,7 +314,7 @@ def test_stable_172_live_activity_commands_match_native_goldens() -> None:
     )
     assert encode_command(update, protocol_version=25) == EncodedCommand(
         bytes.fromhex(
-            "0a06646576696365121e121c0a141212097766554433221100"
+            "0a066465766963651220121e0a160a141212097766554433221100"
             "11ffeeddccbbaa9988120470757368"
         ),
         "live_activity_registration",
