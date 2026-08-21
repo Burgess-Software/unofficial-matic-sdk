@@ -213,9 +213,9 @@ def test_collection_inventory_is_exposed() -> None:
 def test_control_status_reports_complete_wire_codec_inventory() -> None:
     result = runner.invoke(app, ["control", "status"])
     assert result.exit_code == 0
-    assert '"wire_verified_commands": 65' in result.stdout
-    assert '"registered_codecs": 65' in result.stdout
-    assert '"live_delivery_verified_commands": 12' in result.stdout
+    assert '"wire_verified_commands": 70' in result.stdout
+    assert '"registered_codecs": 70' in result.stdout
+    assert '"live_delivery_verified_commands": 15' in result.stdout
     assert '"stationary_stop_enabled": true' in result.stdout
     assert '"motion_codecs_available": 16' in result.stdout
     assert '"direct_joystick_enabled": true' in result.stdout

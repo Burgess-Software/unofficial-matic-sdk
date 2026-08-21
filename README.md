@@ -30,15 +30,15 @@ authenticated local-network service without a cloud relay.
 | Area | SDK capabilities |
 | --- | --- |
 | Enrollment | Pair a Linux computer over Bluetooth and retain a private per-client `BotToken` |
-| Live data | Decode 43 collection targets covering pose, operating state, motors, missions, schedules, history, media, settings, and maps |
+| Live data | Decode 48 live-verified and one Stable 172 app-static collection target covering pose, operating state, Cues availability, motors, missions, schedules, history, media, settings, and maps |
 | Motion | Stop, pause, stay put, dock, drive with direct joystick velocities, or navigate to a mission pose |
 | Cleaning | Run mapped-room coverage, reprioritize an active plan, or clean a drawn dry-stain/wet-spill area |
 | Maps | Build partitions; edit rooms, no-go/drive-only/stair zones, semantics, and sink-summon locations |
-| Speaker and voice | Play or stop built-in seasonal tracks and send the exposed voice preference commands |
+| Speaker and voice | Play or stop built-in seasonal tracks, send voice preferences, and control the Stable 172 user-audio processing state without claiming microphone-data access |
 | Schedules and settings | Create schedules and change supported preferences through typed methods |
 | Exports | Assemble RGB/coverage/semantic maps, export sparse colored voxels as PLY, and recover retained WebP media |
 
-All 65 documented command intents have registered protocol-25 codecs. The
+All 70 documented command intents have registered protocol-25 codecs. The
 [verification ledger](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/command-verification.md)
 distinguishes commands exercised on a real robot from formats proven only
 through offline native serialization.
@@ -144,11 +144,18 @@ an `UnverifiedProtocolVersionWarning` instead of blocking the write.
 
 ## Read live robot data
 
-List all 43 accepted targets:
+List all 49 accepted targets:
 
 ```bash
 matic collections list
 ```
+
+The registry contains 48 targets verified against live robot collection
+responses. Stable 172 live captures added `voice_available`,
+`user_audio_recording_state`, `deep_mop_override_setting_state`,
+`water_flow_override_state`, and `time_zone`. `bag_pass_status` has an exact
+typed native schema but remains app-static because this account delivered no
+current pass record during owner-authorized subscriptions.
 
 Stream privacy-preserving event metadata:
 
@@ -351,9 +358,18 @@ Common methods include:
 | Cleaning | `normal_coverage()`, `stain_mode()`, `reprioritize_coverage()` |
 | Maps | `build_partition()`, room edit methods, zone/semantic/sink-location methods |
 | Schedules | `add_or_modify_schedule()`, `toggle_schedule()`, `remove_schedule()` |
-| Speaker and voice | `set_jukebox_track()`, `stop_jukebox()`, `set_voice_enabled()` |
-| Settings | `set_binary_setting()`, `set_auto_record_voice_enabled()` |
-| Cleaning mechanisms | `set_raw_motors()` |
+| Speaker and voice | `set_jukebox_track()`, `stop_jukebox()`, `set_voice_enabled()`, `set_user_audio_recording()` |
+| Settings | `set_binary_setting()`, `set_auto_record_voice_enabled()`, `set_deep_mop_override_enabled()`, `set_water_flow_override()` |
+| Cleaning mechanisms | `set_raw_motors()`, `resolve_sweeper_maintenance()` |
+| Notifications | `register_live_activity()` |
+
+`register_live_activity()` sends sensitive app notification credentials over
+Hermes. It is notification plumbing rather than robot telemetry or control.
+The SDK does not persist those credentials and hides them from object
+representations and audit records.
+
+Water-flow overrides use the official app range `0.5` through `2.0`; `1.0` is
+the neutral/default multiplier.
 
 Each `joystick()` call sends one velocity command. The SDK does not repeat it,
 expire it, send zero, or Stop automatically:
@@ -374,6 +390,7 @@ settings, and raw-motor examples are in the
 - [Troubleshooting first connection and captures](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/troubleshooting.md)
 - [Collection model reference](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/collections.md)
 - [Command verification ledger](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/command-verification.md)
+- [Stable 172 client-surface audit](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/stable-172-audit.md)
 - [Control behavior and caller responsibility](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/safety.md)
 - [Protocol notes](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/protocol.md)
 - [Research method](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/research-method.md)

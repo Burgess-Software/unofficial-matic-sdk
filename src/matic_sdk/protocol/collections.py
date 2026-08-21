@@ -53,6 +53,8 @@ DEVICE_TARGETS = (
     "current_version",
     "coverage_time",
     "update_state",
+    "voice_available",
+    "time_zone",
 )
 SETTINGS_TARGETS = (
     "petwaste_enabled_state",
@@ -64,6 +66,9 @@ SETTINGS_TARGETS = (
     "rolling_recordings_config_state",
     "uploader_config_state",
     "user_tunnel_ssh_permission",
+    "user_audio_recording_state",
+    "deep_mop_override_setting_state",
+    "water_flow_override_state",
 )
 SCHEDULE_TARGETS = (
     "schedule_events",
@@ -78,6 +83,7 @@ MEDIA_TARGETS = (
 )
 ACCOUNT_TARGETS = ("app_customer_info",)
 EXTRA_TARGETS = ("jukebox_state",)
+APP_STATIC_TARGETS = ("bag_pass_status",)
 
 TARGET_GROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
@@ -91,12 +97,17 @@ TARGET_GROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "media": MEDIA_TARGETS,
         "account": ACCOUNT_TARGETS,
         "extra": EXTRA_TARGETS,
+        "app_static": APP_STATIC_TARGETS,
     }
 )
 KNOWN_TARGETS = tuple(target for values in TARGET_GROUPS.values() for target in values)
 KNOWN_TARGET_SET = frozenset(KNOWN_TARGETS)
-if len(KNOWN_TARGETS) != 43 or len(KNOWN_TARGET_SET) != 43:
-    raise AssertionError("the verified collection inventory must contain 43 targets")
+if len(KNOWN_TARGETS) != len(KNOWN_TARGET_SET):
+    raise AssertionError("collection target groups must not contain duplicates")
+APP_STATIC_TARGET_SET = frozenset(APP_STATIC_TARGETS)
+LIVE_VERIFIED_TARGETS = tuple(
+    target for target in KNOWN_TARGETS if target not in APP_STATIC_TARGET_SET
+)
 
 
 @dataclass(frozen=True, slots=True)

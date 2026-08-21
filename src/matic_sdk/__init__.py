@@ -16,9 +16,19 @@ from matic_sdk.coverage import (
     ReprioritizationSnapshot,
 )
 from matic_sdk.credentials import BotToken, CredentialStore
-from matic_sdk.models.collections import CollectionModel, FriendlyCollectionModel
+from matic_sdk.models.collections import (
+    CollectionModel,
+    CuesGestureIntent,
+    CuesGestureStatus,
+    CuesIntentCategory,
+    CuesRecordingIntent,
+    CuesTaskIntent,
+    CuesVoiceStatus,
+    FriendlyCollectionModel,
+)
 from matic_sdk.models.control import (
     AddZones,
+    AudioRecordingMode,
     CleaningFloor,
     ControlCommand,
     CoverageAction,
@@ -32,9 +42,13 @@ from matic_sdk.models.control import (
     CoveragePlanGoal,
     CoverageSetting,
     CustomScheduleTarget,
+    DeepMopOverrideCommand,
     DrawnCircle,
     JoystickCommand,
     JukeboxTrack,
+    LiveActivityRegistrationCommand,
+    LiveActivityStartToken,
+    LiveActivityUpdateToken,
     MapEnvironmentAction,
     MapEnvironmentCommand,
     MapPoint,
@@ -63,8 +77,11 @@ from matic_sdk.models.control import (
     SplitRoom,
     StainMode,
     StandardScheduleTarget,
+    SweeperMaintenanceCommand,
     UserAction,
+    UserAudioRecordingCommand,
     UserCommand,
+    WaterFlowOverrideCommand,
     Weekday,
 )
 from matic_sdk.models.maps import (
@@ -75,7 +92,12 @@ from matic_sdk.models.maps import (
     SemanticsOverrideMapValue,
     UnknownMapValue,
 )
-from matic_sdk.protocol.collections import KNOWN_TARGETS, RawCollectionEvent
+from matic_sdk.protocol.collections import (
+    APP_STATIC_TARGETS,
+    KNOWN_TARGETS,
+    LIVE_VERIFIED_TARGETS,
+    RawCollectionEvent,
+)
 from matic_sdk.protocol.commands import (
     COMMAND_REGISTRY,
     COMMAND_SPECS,
@@ -85,11 +107,14 @@ from matic_sdk.protocol.commands import (
 __version__ = "0.1.0a4"
 
 __all__ = [
+    "APP_STATIC_TARGETS",
     "COLLECTION_MODEL_TYPES",
     "COMMAND_REGISTRY",
     "COMMAND_SPECS",
     "KNOWN_TARGETS",
+    "LIVE_VERIFIED_TARGETS",
     "AddZones",
+    "AudioRecordingMode",
     "BotToken",
     "CleaningFloor",
     "CollectionModel",
@@ -107,13 +132,23 @@ __all__ = [
     "CoveragePlanGoal",
     "CoverageSetting",
     "CredentialStore",
+    "CuesGestureIntent",
+    "CuesGestureStatus",
+    "CuesIntentCategory",
+    "CuesRecordingIntent",
+    "CuesTaskIntent",
+    "CuesVoiceStatus",
     "CustomScheduleTarget",
+    "DeepMopOverrideCommand",
     "DrawnCircle",
     "FriendlyCollectionModel",
     "GeometricOccupancy",
     "JoystickCommand",
     "JsonlAuditLog",
     "JukeboxTrack",
+    "LiveActivityRegistrationCommand",
+    "LiveActivityStartToken",
+    "LiveActivityUpdateToken",
     "MapClassification",
     "MapEnvironmentAction",
     "MapEnvironmentCommand",
@@ -151,11 +186,14 @@ __all__ = [
     "SplitRoom",
     "StainMode",
     "StandardScheduleTarget",
+    "SweeperMaintenanceCommand",
     "TlsConfig",
     "UnknownMapValue",
     "UnverifiedProtocolVersionWarning",
     "UserAction",
+    "UserAudioRecordingCommand",
     "UserCommand",
+    "WaterFlowOverrideCommand",
     "Weekday",
     "__version__",
     "collection_model_to_dict",

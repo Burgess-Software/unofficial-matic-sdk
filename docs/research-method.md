@@ -19,8 +19,10 @@ unzip -p research/split_config.arm64_v8a.apk \
   lib/arm64-v8a/libmegazord.so > research/libmegazord.so
 ```
 
-The analyzed release was app version 1.151.0. The ARM64 split contained an
-approximately 32 MB AArch64 ELF shared library named `libmegazord.so`.
+The original analyzed release was app version 1.151.0. The ARM64 split
+contained an approximately 32 MB AArch64 ELF shared library named
+`libmegazord.so`. A later comparison against the same-signed Stable 172 release
+is recorded in the [Stable 172 client-surface audit](stable-172-audit.md).
 
 That library is phone-side client code, not robot firmware. It was especially
 useful because it was not stripped: the release still retained many Rust
@@ -124,10 +126,10 @@ claim of access to the robot's full SLAM volume, TSDF, ESDF, or triangle mesh.
 
 ## Command wire evidence
 
-Static tracing recovered 65 command intents and their Hermes targets. Continued
+Static tracing recovered 70 command intents and their Hermes targets. Continued
 tracing through concrete conversion and generated Prost encoding paths, plus
 independent reconstruction and byte-level golden fixtures, produced exact wire
-formats for all 65, all of which have registered codecs. The public UniFFI
+formats for all 70, all of which have registered codecs. The public UniFFI
 variant numbers were not protobuf tags; the trace followed their lift into
 Rust enum discriminants, concrete protocol types, and generated encoders.
 

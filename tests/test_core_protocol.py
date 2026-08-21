@@ -11,7 +11,9 @@ from matic_sdk.collections import CollectionSubscription
 from matic_sdk.config import InsecureTransportError, MaticConfig, TlsConfig
 from matic_sdk.discovery import BotInformation
 from matic_sdk.protocol.collections import (
+    APP_STATIC_TARGETS,
     KNOWN_TARGETS,
+    LIVE_VERIFIED_TARGETS,
     CollectionOperation,
     decode_collection_response,
     initial_request,
@@ -44,7 +46,18 @@ def collection_response(sequence: int, payload: bytes = b"value") -> bytes:
 
 
 def test_verified_target_inventory_and_official_initial_request() -> None:
-    assert len(KNOWN_TARGETS) == len(set(KNOWN_TARGETS)) == 43
+    assert len(KNOWN_TARGETS) == len(set(KNOWN_TARGETS))
+    assert {
+        "voice_available",
+        "user_audio_recording_state",
+        "deep_mop_override_setting_state",
+        "water_flow_override_state",
+        "time_zone",
+        "bag_pass_status",
+    } <= set(KNOWN_TARGETS)
+    assert len(LIVE_VERIFIED_TARGETS) == 48
+    assert APP_STATIC_TARGETS == ("bag_pass_status",)
+    assert set(APP_STATIC_TARGETS).isdisjoint(LIVE_VERIFIED_TARGETS)
     assert initial_request("latest_pose").hex() == (
         "0a180a0b6c61746573745f706f73651a071802201428e8072001"
     )

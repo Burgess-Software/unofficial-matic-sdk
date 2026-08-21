@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import struct
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from matic_sdk.collection_json import collection_model_to_dict
 from matic_sdk.collection_models import (
@@ -11,7 +11,16 @@ from matic_sdk.collection_models import (
     decode_collection_payload,
 )
 from matic_sdk.models.collections import (
+    AudioRecordingStateCollectionModel,
+    BagPassCollectionModel,
     BinarySettingCollectionModel,
+    CuesGestureIntent,
+    CuesGestureStatus,
+    CuesIntentCategory,
+    CuesRecordingIntent,
+    CuesTaskIntent,
+    CuesVoiceStatus,
+    DeepMopOverrideCollectionModel,
     JukeboxCollectionModel,
     MapTileCollectionModel,
     MediaCollectionModel,
@@ -19,9 +28,11 @@ from matic_sdk.models.collections import (
     RobotStatusCollectionModel,
     ScheduleEventCollectionModel,
     StructuredCollectionModel,
+    TimeZoneCollectionModel,
     VersionCollectionModel,
+    WaterFlowOverrideCollectionModel,
 )
-from matic_sdk.models.control import JukeboxTrack
+from matic_sdk.models.control import AudioRecordingMode, JukeboxTrack
 from matic_sdk.protocol.collections import (
     KNOWN_TARGET_SET,
     CollectionOperation,
@@ -67,6 +78,96 @@ def test_unknown_target_uses_lossless_structured_model() -> None:
     assert decoded.schema_name == "future_collection"
     assert decoded.fields[0].number == 27
     assert decoded.raw_payload == payload
+
+
+def test_stable_172_live_captured_targets_have_typed_lossless_models() -> None:
+    availability = decode_collection_payload(
+        "voice_available",
+        bytes.fromhex("0801"),
+    )
+    idle = decode_collection_payload(
+        "user_audio_recording_state",
+        bytes.fromhex("1200"),
+    )
+
+    assert isinstance(availability, BinarySettingCollectionModel)
+    assert availability.enabled is True
+    assert isinstance(idle, AudioRecordingStateCollectionModel)
+    assert idle.mode is None
+    assert idle.recording is False
+
+    for mode_number, expected in enumerate(AudioRecordingMode, start=1):
+        recording = decode_collection_payload(
+            "user_audio_recording_state",
+            bytes((0x08, mode_number)),
+        )
+        assert isinstance(recording, AudioRecordingStateCollectionModel)
+        assert recording.mode is expected
+        assert recording.recording is True
+
+    future_mode_payload = bytes.fromhex("0863a00601")
+    future_mode = decode_collection_payload(
+        "user_audio_recording_state",
+        future_mode_payload,
+    )
+    assert isinstance(future_mode, AudioRecordingStateCollectionModel)
+    assert future_mode.mode == "unknown_99"
+    assert future_mode.recording is True
+    assert future_mode.raw_payload == future_mode_payload
+    assert [field.number for field in future_mode.fields] == [1, 100]
+
+    disabled = decode_collection_payload(
+        "deep_mop_override_setting_state",
+        bytes.fromhex("0a00"),
+    )
+    enabled = decode_collection_payload(
+        "deep_mop_override_setting_state",
+        bytes.fromhex("1200"),
+    )
+    assert isinstance(disabled, DeepMopOverrideCollectionModel)
+    assert disabled.enabled is False
+    assert isinstance(enabled, DeepMopOverrideCollectionModel)
+    assert enabled.enabled is True
+
+    default_flow = decode_collection_payload("water_flow_override_state", b"")
+    neutral_flow = decode_collection_payload(
+        "water_flow_override_state",
+        bytes.fromhex("0a050d0000803f"),
+    )
+    assert isinstance(default_flow, WaterFlowOverrideCollectionModel)
+    assert default_flow.factor == 0.0
+    assert isinstance(neutral_flow, WaterFlowOverrideCollectionModel)
+    assert neutral_flow.factor == 1.0
+
+    time_zone_payload = bytes.fromhex(
+        "0a1c120f416d65726963612f4368696361676f18a0d7feffffffffffff01"
+    )
+    time_zone = decode_collection_payload("time_zone", time_zone_payload)
+    assert isinstance(time_zone, TimeZoneCollectionModel)
+    assert time_zone.time_zone == "America/Chicago"
+    assert time_zone.utc_offset == timedelta(hours=-6)
+    assert time_zone.raw_payload == time_zone_payload
+
+
+def test_stable_172_bag_pass_native_schema_is_typed_but_app_static() -> None:
+    not_owned = decode_collection_payload("bag_pass_status", b"")
+    started = encode_varint_field(1, 1_735_689_600)
+    expires = encode_varint_field(1, 1_738_368_000)
+    active_payload = encode_bytes_field(
+        1,
+        encode_bytes_field(1, started) + encode_bytes_field(2, expires),
+    )
+    owned = decode_collection_payload("bag_pass_status", active_payload)
+
+    assert isinstance(not_owned, BagPassCollectionModel)
+    assert not_owned.owned is False
+    assert not_owned.started_at is None
+    assert not_owned.expires_at is None
+    assert isinstance(owned, BagPassCollectionModel)
+    assert owned.owned is True
+    assert owned.started_at == datetime(2025, 1, 1, tzinfo=UTC)
+    assert owned.expires_at == datetime(2025, 2, 1, tzinfo=UTC)
+    assert owned.raw_payload == active_payload
 
 
 def test_raw_event_decode_convenience_preserves_operation_and_payload() -> None:
@@ -141,7 +242,9 @@ def test_map_model_reuses_the_proven_tile_decoder() -> None:
 
 def test_robot_status_and_version_models_expose_live_control_feedback() -> None:
     states = bytes((104, 120))
-    status_payload = encode_bytes_field(1, states) + _float32(9, 0.73)
+    status_payload = (
+        encode_bytes_field(1, states) + encode_varint_field(1, 211) + _float32(9, 0.73)
+    )
 
     status = decode_collection_payload("kabuki_state", status_payload)
     version = decode_collection_payload(
@@ -152,15 +255,28 @@ def test_robot_status_and_version_models_expose_live_control_feedback() -> None:
     )
 
     assert isinstance(status, RobotStatusCollectionModel)
-    assert status.state_codes == (104, 120)
+    assert status.state_codes == (104, 120, 211)
     assert status.activity == "paused"
     assert status.is_paused
     assert status.is_navigating
     assert status.battery_percentage == 73
+    assert status.is_recording
+    assert status.is_following_person is None
+    assert status.voice_status is None
+    assert status.gesture_status is None
     assert isinstance(version, VersionCollectionModel)
     assert version.version_name == "v200.1"
     assert version.profile_name == "stable"
     assert version.protocol_version == 26
+
+
+def test_stable_172_cues_enums_are_public_string_values() -> None:
+    assert CuesVoiceStatus.LISTENING_FOR_WAKE_WORD == "listening_for_wake_word"
+    assert CuesGestureStatus.POINTED_TARGET_ACCEPTED == "pointed_target_accepted"
+    assert CuesIntentCategory.GESTURE == "gesture"
+    assert CuesTaskIntent.REDO_LAST_CLEAN == "redo_last_clean"
+    assert CuesGestureIntent.FOLLOW_PERSON == "follow_person"
+    assert CuesRecordingIntent.RECORD_DOA == "record_doa"
 
 
 def test_schedule_and_media_models_have_named_fields() -> None:

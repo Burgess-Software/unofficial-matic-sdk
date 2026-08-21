@@ -21,6 +21,7 @@ from matic_sdk.commands import (
 )
 from matic_sdk.config import MaticConfig, TlsConfig
 from matic_sdk.models.control import (
+    AudioRecordingMode,
     CleaningCommand,
     CleaningFloor,
     CleaningIntensity,
@@ -35,6 +36,7 @@ from matic_sdk.models.control import (
     CoverageGoalSpec,
     CoveragePlanGoal,
     CoverageSetting,
+    DeepMopOverrideCommand,
     DeviceAction,
     DeviceCommand,
     DrawnCircle,
@@ -43,6 +45,9 @@ from matic_sdk.models.control import (
     JukeboxTrack,
     LifecycleAction,
     LifecycleCommand,
+    LiveActivityRegistrationCommand,
+    LiveActivityStartToken,
+    LiveActivityUpdateToken,
     MapEnvironmentAction,
     MapEnvironmentCommand,
     MissionPosture,
@@ -58,10 +63,13 @@ from matic_sdk.models.control import (
     SettingAction,
     SettingsCommand,
     StainMode,
+    SweeperMaintenanceCommand,
     TransportAcknowledgement,
     TransportAckStatus,
     UserAction,
+    UserAudioRecordingCommand,
     UserCommand,
+    WaterFlowOverrideCommand,
     WifiAction,
     WifiCommand,
 )
@@ -158,7 +166,7 @@ def synthetic_stop_registry() -> CommandRegistry:
 def test_registry_documents_every_recovered_command_family() -> None:
     families = {spec.family for spec in COMMAND_SPECS}
     assert families == set(CommandFamily)
-    assert len(COMMAND_SPECS) == 65
+    assert len(COMMAND_SPECS) == 70
     assert all(spec.known_hermes_target for spec in COMMAND_SPECS)
     expected_keys = {
         "user.stop",
@@ -171,9 +179,14 @@ def test_registry_documents_every_recovered_command_family() -> None:
         "map.edit_rooms",
         "wifi.connect",
         "device.rename",
+        "device.sweeper_maintenance_resolve",
         "settings.child_lock",
         "schedule.add_or_modify",
         "media.recording_enable",
+        "media.user_audio_recording",
+        "settings.deep_mop_override",
+        "settings.water_flow_override",
+        "telemetry.live_activity_registration",
         "telemetry.support_ssh_permission",
         "raw_motors.setpoints",
         "lifecycle.update",
@@ -191,17 +204,20 @@ def test_default_registry_exposes_only_verified_codecs() -> None:
         for spec in COMMAND_SPECS
         if spec.evidence_level is CodecEvidenceLevel.WIRE_VERIFIED
     }
-    assert len(wire_verified) == 65
+    assert len(wire_verified) == 70
     assert wire_verified == available
     live_verified = {spec.key for spec in COMMAND_SPECS if spec.live_delivery_verified}
     assert live_verified == {
         "coverage.normal",
+        "media.user_audio_recording",
         "navigation.navigate",
         "settings.child_lock",
         "settings.auto_record_voice",
+        "settings.deep_mop_override",
         "settings.jukebox",
         "settings.pet_waste_avoidance",
         "settings.voice",
+        "settings.water_flow_override",
         "user.dock",
         "user.joystick",
         "user.pause",
@@ -237,6 +253,101 @@ def test_constant_user_payloads_match_official_or_native_fixtures() -> None:
     assert joystick.known_payload is None
 
 
+@pytest.mark.parametrize(
+    ("mode", "payload_hex"),
+    [
+        (None, "1200"),
+        (AudioRecordingMode.AMBIENT, "0801"),
+        (AudioRecordingMode.DIRECTION_OF_ARRIVAL, "0802"),
+        (AudioRecordingMode.WAKE_WORD, "0803"),
+    ],
+)
+def test_stable_172_user_audio_command_matches_native_goldens(
+    mode: AudioRecordingMode | None,
+    payload_hex: str,
+) -> None:
+    assert encode_command(
+        UserAudioRecordingCommand(mode),
+        protocol_version=25,
+    ) == EncodedCommand(
+        bytes.fromhex(payload_hex),
+        "user_audio_recording_command",
+    )
+
+
+def test_stable_172_cleaning_override_commands_match_native_goldens() -> None:
+    expected = (
+        (DeepMopOverrideCommand(False), "0a00", "deep_mop_override_setting_command"),
+        (DeepMopOverrideCommand(True), "1200", "deep_mop_override_setting_command"),
+        (
+            WaterFlowOverrideCommand(0.5),
+            "0a050d0000003f",
+            "water_flow_override_command",
+        ),
+        (
+            WaterFlowOverrideCommand(1.0),
+            "0a050d0000803f",
+            "water_flow_override_command",
+        ),
+        (SweeperMaintenanceCommand(), "0a00", "sweeper_maintenance_command"),
+    )
+    for command, payload_hex, target in expected:
+        assert encode_command(command, protocol_version=25) == EncodedCommand(
+            bytes.fromhex(payload_hex),
+            target,
+        )
+
+
+def test_stable_172_live_activity_commands_match_native_goldens() -> None:
+    start = LiveActivityRegistrationCommand(
+        "device",
+        LiveActivityStartToken("fcm", "pts"),
+    )
+    update = LiveActivityRegistrationCommand(
+        "device",
+        LiveActivityUpdateToken(
+            UUID("00112233-4455-6677-8899-aabbccddeeff"),
+            "push",
+        ),
+    )
+
+    assert encode_command(start, protocol_version=25) == EncodedCommand(
+        bytes.fromhex("0a06646576696365120c0a0a0a0366636d1203707473"),
+        "live_activity_registration",
+    )
+    assert encode_command(update, protocol_version=25) == EncodedCommand(
+        bytes.fromhex(
+            "0a066465766963651220121e0a160a141212097766554433221100"
+            "11ffeeddccbbaa9988120470757368"
+        ),
+        "live_activity_registration",
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        UserAudioRecordingCommand("ambient"),  # type: ignore[arg-type]
+        DeepMopOverrideCommand(1),  # type: ignore[arg-type]
+        WaterFlowOverrideCommand(float("nan")),
+        WaterFlowOverrideCommand(float("inf")),
+        WaterFlowOverrideCommand(10.0**100),
+        WaterFlowOverrideCommand(0.0),
+        WaterFlowOverrideCommand(0.49),
+        WaterFlowOverrideCommand(2.01),
+        LiveActivityRegistrationCommand(
+            "device",
+            LiveActivityUpdateToken("not-a-uuid", "push"),  # type: ignore[arg-type]
+        ),
+    ],
+)
+def test_stable_172_command_codecs_reject_invalid_values(
+    command: object,
+) -> None:
+    with pytest.raises(ValueError):
+        encode_command(command, protocol_version=25)  # type: ignore[arg-type]
+
+
 def test_unverified_protocol_version_warns_and_encodes() -> None:
     with pytest.warns(UnverifiedProtocolVersionWarning, match="not 24"):
         encoded = COMMAND_REGISTRY.encode(
@@ -262,6 +373,16 @@ def test_wifi_passphrase_is_not_exposed_by_repr() -> None:
         passphrase="do-not-print-this",
     )
     assert "do-not-print-this" not in repr(command)
+
+
+def test_live_activity_credentials_are_not_exposed_by_repr() -> None:
+    token = LiveActivityStartToken("secret-fcm", "secret-push-to-start")
+    command = LiveActivityRegistrationCommand("secret-device", token)
+
+    assert "secret-fcm" not in repr(token)
+    assert "secret-push-to-start" not in repr(token)
+    assert "secret-device" not in repr(command)
+    assert "secret-fcm" not in repr(command)
 
 
 def test_registry_refuses_codec_without_wire_verified_evidence() -> None:
@@ -1594,6 +1715,42 @@ async def test_audio_setting_convenience_methods_route_typed_commands_once() -> 
         EncodedCommand(b"\x08\x01", "auto_record_voice_enabled_command"),
         EncodedCommand(b"\x08\x02", "jukebox_command"),
         EncodedCommand(b"", "jukebox_command"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_stable_172_convenience_methods_route_typed_commands_once() -> None:
+    transport = AcknowledgingTransport()
+    executor = CommandExecutor(
+        transport,
+        protocol_version=25,
+        tls_identity_verified=True,
+    )
+
+    receipts = [
+        await executor.set_user_audio_recording(AudioRecordingMode.AMBIENT),
+        await executor.set_deep_mop_override_enabled(True),
+        await executor.set_water_flow_override(1.0),
+        await executor.resolve_sweeper_maintenance(),
+        await executor.register_live_activity(
+            device_id="device",
+            token=LiveActivityStartToken("fcm", "pts"),
+        ),
+    ]
+
+    assert [receipt.command_key for receipt in receipts] == [
+        "media.user_audio_recording",
+        "settings.deep_mop_override",
+        "settings.water_flow_override",
+        "device.sweeper_maintenance_resolve",
+        "telemetry.live_activity_registration",
+    ]
+    assert [command.hermes_target for command in transport.commands] == [
+        "user_audio_recording_command",
+        "deep_mop_override_setting_command",
+        "water_flow_override_command",
+        "sweeper_maintenance_command",
+        "live_activity_registration",
     ]
 
 

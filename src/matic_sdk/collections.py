@@ -22,7 +22,7 @@ FETCH_COLLECTION_PATH = "/hermes.Hermes/FetchCollection"
 
 
 class UnknownCollectionTarget(ValueError):
-    """The target is not part of the live-verified read-only inventory."""
+    """The target is not part of the accepted read-only inventory."""
 
 
 class CollectionSubscription(AsyncIterator[RawCollectionEvent]):
@@ -55,7 +55,7 @@ class CollectionSubscription(AsyncIterator[RawCollectionEvent]):
     ) -> CollectionSubscription:
         if target not in KNOWN_TARGET_SET and not allow_unverified_target:
             raise UnknownCollectionTarget(
-                f"{target!r} is not one of the 43 live-verified read-only targets"
+                f"{target!r} is not in the accepted read-only target inventory"
             )
         stream = await transport.open_grpc_stream(
             FETCH_COLLECTION_PATH,

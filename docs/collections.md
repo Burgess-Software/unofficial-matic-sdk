@@ -21,6 +21,14 @@ from matic_sdk import decode_collection_payload
 state = decode_collection_payload("kabuki_state", saved_payload)
 ```
 
+Stable 172's native client also exposes optional Cues telemetry on
+`RobotStatusCollectionModel`: `voice_status`, `gesture_status`,
+`voice_intent_category`, `voice_intent`, `is_recording`, and
+`is_following_person`. `is_recording` is decoded from the captured state-code
+transition; voice, gesture, intent, and following-person fields remain `None`
+when their source event is unavailable. The model retains the original
+protobuf fields in either case.
+
 For a merged `TelemetrySession`, `update.model` decodes the new event and
 `update.latest_models` returns the most recent friendly model for every target
 seen so far.
@@ -46,7 +54,10 @@ details, and pairing codes are omitted from model representations.
 
 ## Registered targets
 
-All 43 known collection targets have a stable model type:
+The SDK accepts 48 live-verified targets and one app-static target discovered
+in the signed Stable 172 Android client. Every accepted target has a stable
+model type. `bag_pass_status` remains explicitly app-static until a live
+collection delivers an account record; its native payload schema is typed.
 
 | Target | Model | Friendly values |
 | --- | --- | --- |
@@ -93,6 +104,12 @@ All 43 known collection targets have a stable model type:
 | `recording_videos` | `MediaCollectionModel` | Validated retained image/video assets |
 | `app_customer_info` | `CustomerInfoCollectionModel` | Hidden customer email |
 | `jukebox_state` | `JukeboxCollectionModel` | Selected seasonal track |
+| `voice_available` | `BinarySettingCollectionModel` | Live-verified Stable 172 Cues availability flag |
+| `user_audio_recording_state` | `AudioRecordingStateCollectionModel` | Live-verified Idle, Ambient, and Direction-of-Arrival; native-exact Wake Word and unknown-mode-safe state |
+| `deep_mop_override_setting_state` | `DeepMopOverrideCollectionModel` | Live-verified disabled/enabled oneof state |
+| `water_flow_override_state` | `WaterFlowOverrideCollectionModel` | Live-verified float32 multiplier; empty protobuf is default zero and `1.0` is the app-neutral setting |
+| `time_zone` | `TimeZoneCollectionModel` | Live-verified time-zone identifier and signed UTC offset |
+| `bag_pass_status` | `BagPassCollectionModel` | App-static exact native ownership/start/expiry schema; no live account record captured |
 
 The public mapping `matic_sdk.COLLECTION_MODEL_TYPES` lets applications inspect
 the expected type for a target without decoding an event.

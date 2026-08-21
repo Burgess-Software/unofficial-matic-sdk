@@ -10,10 +10,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from enum import StrEnum
 from typing import TYPE_CHECKING, TypeAlias
 from uuid import UUID
 
-from matic_sdk.models.control import JukeboxTrack
+from matic_sdk.models.control import AudioRecordingMode, JukeboxTrack
 from matic_sdk.protocol.collections import CollectionOperation
 from matic_sdk.protocol.wire import WireField
 
@@ -250,6 +251,70 @@ class MotorStatusCollectionModel(CollectionModel):
     brush: MotorReading
 
 
+class CuesVoiceStatus(StrEnum):
+    """App-facing Matic Cues voice pipeline state."""
+
+    DISABLED = "disabled"
+    LISTENING_FOR_WAKE_WORD = "listening_for_wake_word"
+    LISTENING_FOR_INTENT = "listening_for_intent"
+    THINKING_FOR_INTENT = "thinking_for_intent"
+    CLASSIFIED = "classified"
+    REJECTED = "rejected"
+
+
+class CuesGestureStatus(StrEnum):
+    """App-facing pointing and follow-person workflow state."""
+
+    AWAITING_POINTED_TARGET = "awaiting_pointed_target"
+    POINTED_TARGET_ACCEPTED = "pointed_target_accepted"
+    NO_TARGET_FOUND = "no_target_found"
+    FACING_USER = "facing_user"
+    PERSON_NOT_FOUND = "person_not_found"
+    FOLLOWING = "following"
+    REPOSITIONING = "repositioning"
+    REAWAITING_POINTED_TARGET = "reawaiting_pointed_target"
+    AWAITING_STEP_BACK = "awaiting_step_back"
+
+
+class CuesIntentCategory(StrEnum):
+    """Top-level category returned by the Cues intent classifier."""
+
+    TASK = "task"
+    GESTURE = "gesture"
+    UNKNOWN = "unknown"
+    RECORDING = "recording"
+
+
+class CuesTaskIntent(StrEnum):
+    """Task intent names exposed by Stable 172's native client binding."""
+
+    CLEAN = "clean"
+    CLEAN_ALL = "clean_all"
+    DOCK = "dock"
+    GO_AWAY = "go_away"
+    NAVIGATE = "navigate"
+    PAUSE = "pause"
+    REDO_LAST_CLEAN = "redo_last_clean"
+    RESUME = "resume"
+    SINK_SUMMON = "sink_summon"
+    STOP = "stop"
+
+
+class CuesGestureIntent(StrEnum):
+    """Gesture intent names exposed by Stable 172's native client binding."""
+
+    FOLLOW_PERSON = "follow_person"
+    POINT_TO_CLEAN = "point_to_clean"
+
+
+class CuesRecordingIntent(StrEnum):
+    """Diagnostic recording intents exposed by the Cues classifier."""
+
+    ROLLING_RECORDING = "rolling_recording"
+    AMBIENT_AUDIO = "ambient_audio"
+    RECORD_DOA = "record_doa"
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class RobotStatusCollectionModel(CollectionModel):
     """Main robot state, errors, battery, and commonly useful activity flags."""
@@ -263,6 +328,14 @@ class RobotStatusCollectionModel(CollectionModel):
     is_charging: bool = False
     is_navigating: bool = False
     is_cleaning: bool = False
+    is_recording: bool = False
+    is_following_person: bool | None = None
+    voice_status: CuesVoiceStatus | str | None = None
+    gesture_status: CuesGestureStatus | str | None = None
+    voice_intent_category: CuesIntentCategory | str | None = None
+    voice_intent: (
+        CuesTaskIntent | CuesGestureIntent | CuesRecordingIntent | str | None
+    ) = None
     time_until_idle_dock: timedelta | None = None
 
 
@@ -301,6 +374,48 @@ class BinarySettingCollectionModel(CollectionModel):
 
     setting: str
     enabled: bool | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class AudioRecordingStateCollectionModel(CollectionModel):
+    """Current Stable 172 audio-processing mode; no audio samples are exposed."""
+
+    mode: AudioRecordingMode | str | None
+
+    @property
+    def recording(self) -> bool:
+        return self.mode is not None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class DeepMopOverrideCollectionModel(CollectionModel):
+    """Whether the retained deep-mop override is enabled."""
+
+    enabled: bool | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class WaterFlowOverrideCollectionModel(CollectionModel):
+    """Retained water-flow multiplier from the app-supported 0.5x-2.0x range."""
+
+    factor: float | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class TimeZoneCollectionModel(CollectionModel):
+    """Robot time-zone identifier and current UTC offset."""
+
+    time_zone: str | None
+    utc_offset: timedelta | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class BagPassCollectionModel(CollectionModel):
+    """Bag-pass ownership interval recovered from Stable 172 native parsing."""
+
+    owned: bool
+    started_at: datetime | None
+    expires_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -401,6 +516,11 @@ class JukeboxCollectionModel(CollectionModel):
 
 FriendlyCollectionModel: TypeAlias = (
     StructuredCollectionModel
+    | AudioRecordingStateCollectionModel
+    | BagPassCollectionModel
+    | DeepMopOverrideCollectionModel
+    | WaterFlowOverrideCollectionModel
+    | TimeZoneCollectionModel
     | MapTileCollectionModel
     | PoseCollectionModel
     | DockDetectionCollectionModel
@@ -436,13 +556,22 @@ FriendlyCollectionModel: TypeAlias = (
 
 __all__ = [
     "ActiveSessionCollectionModel",
+    "AudioRecordingStateCollectionModel",
+    "BagPassCollectionModel",
     "BinarySettingCollectionModel",
     "CollectionModel",
     "CoverageHistoryCollectionModel",
     "CoverageLineCollectionModel",
     "CoveragePlanCollectionModel",
     "CoverageTimeCollectionModel",
+    "CuesGestureIntent",
+    "CuesGestureStatus",
+    "CuesIntentCategory",
+    "CuesRecordingIntent",
+    "CuesTaskIntent",
+    "CuesVoiceStatus",
     "CustomerInfoCollectionModel",
+    "DeepMopOverrideCollectionModel",
     "DockDetectionCollectionModel",
     "FlythroughCollectionModel",
     "FlythroughPose",
@@ -469,11 +598,13 @@ __all__ = [
     "SinkSummonScheduleCollectionModel",
     "SshPermissionCollectionModel",
     "StructuredCollectionModel",
+    "TimeZoneCollectionModel",
     "UpdateStateCollectionModel",
     "UploaderConfigCollectionModel",
     "Vector2",
     "Vector3",
     "VersionCollectionModel",
+    "WaterFlowOverrideCollectionModel",
     "WifiStatusCollectionModel",
     "ZoneCollectionModel",
 ]

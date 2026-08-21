@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 
 from matic_sdk.models.control import (
     AddZones,
+    AudioRecordingMode,
     CommandReceipt,
     ControlCommand,
     CoverageAction,
@@ -22,9 +23,13 @@ from matic_sdk.models.control import (
     CoverageCommand,
     CoverageGoals,
     CoverageSetting,
+    DeepMopOverrideCommand,
     DrawnCircle,
     JoystickCommand,
     JukeboxTrack,
+    LiveActivityRegistrationCommand,
+    LiveActivityStartToken,
+    LiveActivityUpdateToken,
     MapEnvironmentAction,
     MapEnvironmentCommand,
     MapPoint,
@@ -52,9 +57,12 @@ from matic_sdk.models.control import (
     SinkSummonScheduleEvent,
     SplitRoom,
     StainMode,
+    SweeperMaintenanceCommand,
     TransportAcknowledgement,
     UserAction,
+    UserAudioRecordingCommand,
     UserCommand,
+    WaterFlowOverrideCommand,
     utc_now,
 )
 from matic_sdk.protocol.commands import (
@@ -731,6 +739,39 @@ class CommandExecutor:
         """Stop the current built-in jukebox track."""
 
         return await self.set_jukebox_track(None)
+
+    async def set_user_audio_recording(
+        self,
+        mode: AudioRecordingMode | None,
+    ) -> CommandReceipt:
+        """Start an audio-processing mode, or stop it with ``None``."""
+
+        return await self.execute(UserAudioRecordingCommand(mode))
+
+    async def set_deep_mop_override_enabled(self, enabled: bool) -> CommandReceipt:
+        """Enable or disable the retained deep-mop override."""
+
+        return await self.execute(DeepMopOverrideCommand(enabled))
+
+    async def set_water_flow_override(self, factor: float) -> CommandReceipt:
+        """Set the retained 0.5x-2.0x multiplier; use 1.0x for neutral."""
+
+        return await self.execute(WaterFlowOverrideCommand(factor))
+
+    async def resolve_sweeper_maintenance(self) -> CommandReceipt:
+        """Resolve the robot's current sweeper-maintenance condition."""
+
+        return await self.execute(SweeperMaintenanceCommand())
+
+    async def register_live_activity(
+        self,
+        *,
+        device_id: str,
+        token: LiveActivityStartToken | LiveActivityUpdateToken,
+    ) -> CommandReceipt:
+        """Register sensitive start or update credentials for a live activity."""
+
+        return await self.execute(LiveActivityRegistrationCommand(device_id, token))
 
     async def set_raw_motors(
         self,
