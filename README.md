@@ -30,7 +30,7 @@ authenticated local-network service without a cloud relay.
 | Area | SDK capabilities |
 | --- | --- |
 | Enrollment | Pair a Linux computer over Bluetooth and retain a private per-client `BotToken` |
-| Live data | Decode 43 live-verified and six Stable 172 app-static collection targets covering pose, operating state, Cues availability, motors, missions, schedules, history, media, settings, and maps |
+| Live data | Decode 48 live-verified and one Stable 172 app-static collection target covering pose, operating state, Cues availability, motors, missions, schedules, history, media, settings, and maps |
 | Motion | Stop, pause, stay put, dock, drive with direct joystick velocities, or navigate to a mission pose |
 | Cleaning | Run mapped-room coverage, reprioritize an active plan, or clean a drawn dry-stain/wet-spill area |
 | Maps | Build partitions; edit rooms, no-go/drive-only/stair zones, semantics, and sink-summon locations |
@@ -150,12 +150,12 @@ List all 49 accepted targets:
 matic collections list
 ```
 
-The registry contains 43 targets verified against live robot collection
-responses and six app-static targets recovered from signed Stable 172 client
-bindings: `voice_available`, `user_audio_recording_state`,
-`deep_mop_override_setting_state`, `water_flow_override_state`, `time_zone`,
-and `bag_pass_status`. App-static targets use lossless decoders and remain
-separately labeled until their live delivery and schemas are captured.
+The registry contains 48 targets verified against live robot collection
+responses. Stable 172 live captures added `voice_available`,
+`user_audio_recording_state`, `deep_mop_override_setting_state`,
+`water_flow_override_state`, and `time_zone`. `bag_pass_status` has an exact
+typed native schema but remains app-static because this account delivered no
+current pass record during owner-authorized subscriptions.
 
 Stream privacy-preserving event metadata:
 
@@ -367,6 +367,9 @@ Common methods include:
 Hermes. It is notification plumbing rather than robot telemetry or control.
 The SDK does not persist those credentials and hides them from object
 representations and audit records.
+
+Water-flow overrides use the official app range `0.5` through `2.0`; `1.0` is
+the neutral/default multiplier.
 
 Each `joystick()` call sends one velocity command. The SDK does not repeat it,
 expire it, send zero, or Stop automatically:

@@ -4,9 +4,10 @@ This audit records what changed in Matic's signed Android client between app
 versions 1.151.0 and 1.172.1. It separates names and types established from the
 client from protobuf formats proven well enough to publish in this SDK.
 
-No command was sent to a robot during this audit. No robot was connected over
-ADB, and no household payload, credential, map, image, or recording was added
-to the repository.
+No command was sent during the static APK audit, and no robot was connected
+over ADB. A separate owner-authorized live follow-up supplied the delivery
+evidence described below. No household payload, credential, map, image, or
+recording was added to the repository.
 
 ## Artifacts and method
 
@@ -38,18 +39,38 @@ Stable 172's Kabuki subscription surface adds six property targets.
 
 | Hermes target | App-facing value | SDK decision |
 | --- | --- | --- |
-| `voice_available` | `BinaryState(enabled: bool)` | Registered as app-static typed telemetry |
-| `user_audio_recording_state` | `Idle` or `Recording(AudioRecordingMode)` | Registered app-static and losslessly decoded pending a captured schema |
-| `deep_mop_override_setting_state` | `DeepMopOverrideEnabledState(enabled: bool)` | Registered app-static with lossless structured decoding |
-| `water_flow_override_state` | `WaterFlowOverrideState(factor: float32)` | Registered app-static with lossless structured decoding |
-| `time_zone` | `TimeZoneState(TimeZone)` | Registered app-static with lossless structured decoding |
-| `bag_pass_status` | `NotOwned`, `Active`, `ExpiringSoon`, or `Expired`; owned states carry a timestamp | Registered app-static with lossless structured decoding |
+| `voice_available` | `BinaryState(enabled: bool)` | Live-verified typed telemetry |
+| `user_audio_recording_state` | `Idle` or `Recording(AudioRecordingMode)` | Live-verified typed state with exact native mode mapping |
+| `deep_mop_override_setting_state` | `DeepMopOverrideEnabledState(enabled: bool)` | Live-verified typed disabled/enabled oneof |
+| `water_flow_override_state` | `WaterFlowOverrideState(factor: float32)` | Live-verified typed nested float32 state |
+| `time_zone` | `TimeZoneState(TimeZone)` | Live-verified typed identifier and signed offset |
+| `bag_pass_status` | `NotOwned` or an active ownership interval; app status is derived from expiry | Exact native typed schema; app-static pending a live account record |
 
 All six targets are accepted because their names and app-facing classifications
-are exact and their structured decoders preserve every raw field. They remain
-labeled app-static rather than live-verified. Only `voice_available` has a
-specialized boolean decoder; the other targets deliberately remain lossless
-structured models until owner-authorized captures prove their value schemas.
+are exact and every decoder preserves the raw payload and fields. Five are now
+live-verified. `bag_pass_status` remains app-static because its stream was
+accepted but this account delivered no record.
+
+### Owner-authorized live capture
+
+On 2026-08-21, firmware `v172.12`/protocol 25 delivered five targets over a
+certificate-pinned authenticated `FetchCollection` connection. The SDK sent
+sequence acknowledgements and retained the raw envelopes outside the source
+repository with owner-only permissions.
+
+| Target | Exact application payload evidence |
+| --- | --- |
+| `voice_available` | `08 01` (`enabled = true`) |
+| `user_audio_recording_state` | Initial/Idle `12 00`; bounded command observations added Ambient `08 01` and Direction-of-Arrival `08 02` |
+| `deep_mop_override_setting_state` | Disabled `0a 00`; bounded transition captured enabled `12 00` and restored disabled |
+| `water_flow_override_state` | Initial empty/default scalar; bounded neutral `1.0` transition captured `0a 05 0d 00 00 80 3f` |
+| `time_zone` | Outer field 1 contained identifier `America/Chicago` in field 2 and signed offset `-21600` seconds in field 3 |
+
+`bag_pass_status` opened successfully but delivered zero events during both the
+concurrent capture and a separate 120-second subscription. Its native parser
+is exact: outer field 1 carries an active pass with start and expiry Timestamp
+messages in fields 1 and 2. The app derives Active, ExpiringSoon, and Expired
+from the expiry rather than separate wire variants.
 
 Stable 172 also removes `requested_preview_release_state` and
 `fcm_device_group` from its compact app subscription table. That establishes
@@ -105,7 +126,7 @@ Stable 172 adds these exact native sender surfaces and target strings.
 | --- | --- | --- | --- |
 | `sendUserAudioRecordingCommand` | `user_audio_recording_command` | `Idle` or `Recording(Ambient \| DirectionOfArrival \| WakeWord)` | Registered with four exact native goldens |
 | `sendDeepMopOverrideEnableCommand` | `deep_mop_override_setting_command` | Boolean enable | Registered with exact false/true oneof mapping |
-| `sendWaterFlowOverrideCommand` | `water_flow_override_command` | `float32` factor | Registered for finite float32 values; no narrower app range was recovered |
+| `sendWaterFlowOverrideCommand` | `water_flow_override_command` | `float32` factor | Registered for the recovered `0.5`-`2.0` app range; `1.0` is neutral |
 | `sendSweeperMaintenanceResolveCommand` | `sweeper_maintenance_command` | Unit/empty resolve request | Registered with exact Resolve-arm envelope |
 | `sendLiveActivityRegistrationCommand` | `live_activity_registration` | Device ID and notification start/update tokens | Registered as sensitive notification plumbing with hidden token representations |
 
@@ -159,15 +180,17 @@ audio retrieval feature until a separate owner-authorized capture demonstrates
 one.
 
 The SDK reproduces each inner protobuf and canonical `ChannelRequest`, pins all
-four variants in golden tests, and labels the command sensitive. This passes
-the wire-verification standard without sending a command or retaining audio.
-Live delivery and returned-audio claims remain explicitly separate.
+four variants in golden tests, and labels the command sensitive. A bounded
+2026-08-21 run added live acknowledgement and retained-state evidence for Idle,
+Ambient, and Direction-of-Arrival. Wake Word was acknowledged but did not
+produce an `08 03` state within ten seconds. No microphone bytes were captured,
+and live delivery remains separate from any returned-audio claim.
 
 ## Result
 
-This release provides enough evidence to publish all six app-static read-side
-targets losslessly, the Cues names, and all five command-side additions. Exact
-retained serializers prove the command bodies; none were sent to a robot during
-the audit. Read models remain app-static and structured where a live value
-schema has not yet been captured, and command live-delivery status remains
-false until a separate bounded owner-authorized test occurs.
+This release provides typed models for all six read-side additions, with five
+promoted to live-verified and `bag_pass_status` kept app-static pending an
+account record. Exact retained serializers prove all five command bodies;
+bounded owner-authorized tests added live delivery for user-audio recording,
+deep-mop override, and water-flow override. Sweeper maintenance and live
+activity registration remain offline-only.

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import struct
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from matic_sdk.collection_json import collection_model_to_dict
 from matic_sdk.collection_models import (
@@ -11,6 +11,8 @@ from matic_sdk.collection_models import (
     decode_collection_payload,
 )
 from matic_sdk.models.collections import (
+    AudioRecordingStateCollectionModel,
+    BagPassCollectionModel,
     BinarySettingCollectionModel,
     CuesGestureIntent,
     CuesGestureStatus,
@@ -18,6 +20,7 @@ from matic_sdk.models.collections import (
     CuesRecordingIntent,
     CuesTaskIntent,
     CuesVoiceStatus,
+    DeepMopOverrideCollectionModel,
     JukeboxCollectionModel,
     MapTileCollectionModel,
     MediaCollectionModel,
@@ -25,9 +28,11 @@ from matic_sdk.models.collections import (
     RobotStatusCollectionModel,
     ScheduleEventCollectionModel,
     StructuredCollectionModel,
+    TimeZoneCollectionModel,
     VersionCollectionModel,
+    WaterFlowOverrideCollectionModel,
 )
-from matic_sdk.models.control import JukeboxTrack
+from matic_sdk.models.control import AudioRecordingMode, JukeboxTrack
 from matic_sdk.protocol.collections import (
     KNOWN_TARGET_SET,
     CollectionOperation,
@@ -75,34 +80,94 @@ def test_unknown_target_uses_lossless_structured_model() -> None:
     assert decoded.raw_payload == payload
 
 
-def test_stable_172_app_static_targets_are_registered_losslessly() -> None:
+def test_stable_172_live_captured_targets_have_typed_lossless_models() -> None:
     availability = decode_collection_payload(
         "voice_available",
-        encode_varint_field(1, 1),
+        bytes.fromhex("0801"),
     )
-    recording_payload = encode_bytes_field(7, b"future-recording-state")
-    recording = decode_collection_payload(
+    idle = decode_collection_payload(
         "user_audio_recording_state",
-        recording_payload,
+        bytes.fromhex("1200"),
     )
 
     assert isinstance(availability, BinarySettingCollectionModel)
     assert availability.enabled is True
-    assert isinstance(recording, StructuredCollectionModel)
-    assert recording.schema_name == "user_audio_recording_state"
-    assert recording.raw_payload == recording_payload
-    assert recording.fields[0].number == 7
+    assert isinstance(idle, AudioRecordingStateCollectionModel)
+    assert idle.mode is None
+    assert idle.recording is False
 
-    for target in (
+    for mode_number, expected in enumerate(AudioRecordingMode, start=1):
+        recording = decode_collection_payload(
+            "user_audio_recording_state",
+            bytes((0x08, mode_number)),
+        )
+        assert isinstance(recording, AudioRecordingStateCollectionModel)
+        assert recording.mode is expected
+        assert recording.recording is True
+
+    future_mode_payload = bytes.fromhex("0863a00601")
+    future_mode = decode_collection_payload(
+        "user_audio_recording_state",
+        future_mode_payload,
+    )
+    assert isinstance(future_mode, AudioRecordingStateCollectionModel)
+    assert future_mode.mode == "unknown_99"
+    assert future_mode.recording is True
+    assert future_mode.raw_payload == future_mode_payload
+    assert [field.number for field in future_mode.fields] == [1, 100]
+
+    disabled = decode_collection_payload(
         "deep_mop_override_setting_state",
+        bytes.fromhex("0a00"),
+    )
+    enabled = decode_collection_payload(
+        "deep_mop_override_setting_state",
+        bytes.fromhex("1200"),
+    )
+    assert isinstance(disabled, DeepMopOverrideCollectionModel)
+    assert disabled.enabled is False
+    assert isinstance(enabled, DeepMopOverrideCollectionModel)
+    assert enabled.enabled is True
+
+    default_flow = decode_collection_payload("water_flow_override_state", b"")
+    neutral_flow = decode_collection_payload(
         "water_flow_override_state",
-        "time_zone",
-        "bag_pass_status",
-    ):
-        decoded = decode_collection_payload(target, recording_payload)
-        assert isinstance(decoded, StructuredCollectionModel)
-        assert decoded.schema_name == target
-        assert decoded.raw_payload == recording_payload
+        bytes.fromhex("0a050d0000803f"),
+    )
+    assert isinstance(default_flow, WaterFlowOverrideCollectionModel)
+    assert default_flow.factor == 0.0
+    assert isinstance(neutral_flow, WaterFlowOverrideCollectionModel)
+    assert neutral_flow.factor == 1.0
+
+    time_zone_payload = bytes.fromhex(
+        "0a1c120f416d65726963612f4368696361676f18a0d7feffffffffffff01"
+    )
+    time_zone = decode_collection_payload("time_zone", time_zone_payload)
+    assert isinstance(time_zone, TimeZoneCollectionModel)
+    assert time_zone.time_zone == "America/Chicago"
+    assert time_zone.utc_offset == timedelta(hours=-6)
+    assert time_zone.raw_payload == time_zone_payload
+
+
+def test_stable_172_bag_pass_native_schema_is_typed_but_app_static() -> None:
+    not_owned = decode_collection_payload("bag_pass_status", b"")
+    started = encode_varint_field(1, 1_735_689_600)
+    expires = encode_varint_field(1, 1_738_368_000)
+    active_payload = encode_bytes_field(
+        1,
+        encode_bytes_field(1, started) + encode_bytes_field(2, expires),
+    )
+    owned = decode_collection_payload("bag_pass_status", active_payload)
+
+    assert isinstance(not_owned, BagPassCollectionModel)
+    assert not_owned.owned is False
+    assert not_owned.started_at is None
+    assert not_owned.expires_at is None
+    assert isinstance(owned, BagPassCollectionModel)
+    assert owned.owned is True
+    assert owned.started_at == datetime(2025, 1, 1, tzinfo=UTC)
+    assert owned.expires_at == datetime(2025, 2, 1, tzinfo=UTC)
+    assert owned.raw_payload == active_payload
 
 
 def test_raw_event_decode_convenience_preserves_operation_and_payload() -> None:

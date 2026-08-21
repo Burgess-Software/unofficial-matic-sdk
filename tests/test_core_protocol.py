@@ -55,7 +55,8 @@ def test_verified_target_inventory_and_official_initial_request() -> None:
         "time_zone",
         "bag_pass_status",
     } <= set(KNOWN_TARGETS)
-    assert len(LIVE_VERIFIED_TARGETS) == 43
+    assert len(LIVE_VERIFIED_TARGETS) == 48
+    assert APP_STATIC_TARGETS == ("bag_pass_status",)
     assert set(APP_STATIC_TARGETS).isdisjoint(LIVE_VERIFIED_TARGETS)
     assert initial_request("latest_pose").hex() == (
         "0a180a0b6c61746573745f706f73651a071802201428e8072001"

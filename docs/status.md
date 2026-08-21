@@ -13,7 +13,7 @@ is still incomplete.
 
 ## Reads
 
-The Hermes `FetchCollection` RPC, sequence acknowledgements, and 43 named
+The Hermes `FetchCollection` RPC, sequence acknowledgements, and 48 named
 collection targets are verified live. Every known target has a registered
 friendly model covering its app-facing pose, mission, activity, device,
 settings, schedule, history, media, or map fields. Each model also retains the

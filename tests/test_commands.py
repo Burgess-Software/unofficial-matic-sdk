@@ -209,12 +209,15 @@ def test_default_registry_exposes_only_verified_codecs() -> None:
     live_verified = {spec.key for spec in COMMAND_SPECS if spec.live_delivery_verified}
     assert live_verified == {
         "coverage.normal",
+        "media.user_audio_recording",
         "navigation.navigate",
         "settings.child_lock",
         "settings.auto_record_voice",
+        "settings.deep_mop_override",
         "settings.jukebox",
         "settings.pet_waste_avoidance",
         "settings.voice",
+        "settings.water_flow_override",
         "user.dock",
         "user.joystick",
         "user.pause",
@@ -277,8 +280,8 @@ def test_stable_172_cleaning_override_commands_match_native_goldens() -> None:
         (DeepMopOverrideCommand(False), "0a00", "deep_mop_override_setting_command"),
         (DeepMopOverrideCommand(True), "1200", "deep_mop_override_setting_command"),
         (
-            WaterFlowOverrideCommand(0.0),
-            "0a050d00000000",
+            WaterFlowOverrideCommand(0.5),
+            "0a050d0000003f",
             "water_flow_override_command",
         ),
         (
@@ -329,6 +332,9 @@ def test_stable_172_live_activity_commands_match_native_goldens() -> None:
         WaterFlowOverrideCommand(float("nan")),
         WaterFlowOverrideCommand(float("inf")),
         WaterFlowOverrideCommand(10.0**100),
+        WaterFlowOverrideCommand(0.0),
+        WaterFlowOverrideCommand(0.49),
+        WaterFlowOverrideCommand(2.01),
         LiveActivityRegistrationCommand(
             "device",
             LiveActivityUpdateToken("not-a-uuid", "push"),  # type: ignore[arg-type]

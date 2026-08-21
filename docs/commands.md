@@ -73,7 +73,7 @@ omitted rather than encoded as a zero-length bytes field. A successful unary
 RPC returns one `ChannelResponse`; its bytes field may itself be absent/default
 or populated.
 
-Twelve command intents have live delivery evidence. Six were delivered once on
+Fifteen command intents have live delivery evidence. Six were delivered once on
 2026-07-22: Stop, StayPut, Pause, child lock, pet-waste avoidance, and voice.
 Stop used an initial one-shot
 check. A separate bounded verifier required parked telemetry, pre-read all
@@ -98,6 +98,14 @@ The exposed speaker endpoint selects only built-in seasonal tracks; the SDK has
 no arbitrary audio, volume, TTS, microphone-byte, or live microphone-stream
 interface. No raw-actuation, destructive, network-changing, update, reboot, or
 shutdown command was live-tested.
+
+On 2026-08-21, bounded owner-authorized checks also verified the Stable 172
+user-audio, deep-mop, and water-flow commands. Idle, Ambient, and
+DirectionOfArrival audio-processing states were observed; WakeWord was
+acknowledged but did not produce a retained state transition within ten
+seconds. Deep-mop transitioned both ways and was restored disabled. A neutral
+`1.0` water-flow multiplier was retained; the official app range is `0.5`
+through `2.0`. These checks captured no microphone samples.
 
 The reusable verifier is
 [`tools/live_verify_safe_commands.py`](../tools/live_verify_safe_commands.py).

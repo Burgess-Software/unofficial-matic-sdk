@@ -20,12 +20,15 @@ from matic_sdk.coverage import (
 from matic_sdk.media import extract_embedded_webps
 from matic_sdk.models.collections import (
     ActiveSessionCollectionModel,
+    AudioRecordingStateCollectionModel,
+    BagPassCollectionModel,
     BinarySettingCollectionModel,
     CoverageHistoryCollectionModel,
     CoverageLineCollectionModel,
     CoveragePlanCollectionModel,
     CoverageTimeCollectionModel,
     CustomerInfoCollectionModel,
+    DeepMopOverrideCollectionModel,
     DockDetectionCollectionModel,
     FlythroughCollectionModel,
     FlythroughPose,
@@ -52,15 +55,17 @@ from matic_sdk.models.collections import (
     SinkSummonScheduleCollectionModel,
     SshPermissionCollectionModel,
     StructuredCollectionModel,
+    TimeZoneCollectionModel,
     UpdateStateCollectionModel,
     UploaderConfigCollectionModel,
     Vector2,
     Vector3,
     VersionCollectionModel,
+    WaterFlowOverrideCollectionModel,
     WifiStatusCollectionModel,
     ZoneCollectionModel,
 )
-from matic_sdk.models.control import JukeboxTrack
+from matic_sdk.models.control import AudioRecordingMode, JukeboxTrack
 from matic_sdk.protocol.collections import (
     KNOWN_TARGET_SET,
     MAP_TARGETS,
@@ -204,6 +209,11 @@ def _enum_name(value: int | None, names: tuple[str, ...]) -> str | None:
 def _signed32(value: int) -> int:
     value &= 0xFFFF_FFFF
     return value - 0x1_0000_0000 if value & 0x8000_0000 else value
+
+
+def _signed64(value: int) -> int:
+    value &= 0xFFFF_FFFF_FFFF_FFFF
+    return value - 0x1_0000_0000_0000_0000 if value & 0x8000_0000_0000_0000 else value
 
 
 def _zigzag32(value: int) -> int:
@@ -1015,6 +1025,77 @@ def _decode_jukebox(context: _DecodeContext) -> JukeboxCollectionModel:
     )
 
 
+def _decode_audio_recording(
+    context: _DecodeContext,
+) -> AudioRecordingStateCollectionModel:
+    mode_number = _integer(context.fields, 1)
+    mode_names = (
+        AudioRecordingMode.AMBIENT,
+        AudioRecordingMode.DIRECTION_OF_ARRIVAL,
+        AudioRecordingMode.WAKE_WORD,
+    )
+    mode: AudioRecordingMode | str | None = None
+    if mode_number is not None:
+        mode = (
+            mode_names[mode_number - 1]
+            if 1 <= mode_number <= len(mode_names)
+            else f"unknown_{mode_number}"
+        )
+    return AudioRecordingStateCollectionModel(
+        **context.common(),
+        mode=mode,
+    )
+
+
+def _decode_deep_mop(context: _DecodeContext) -> DeepMopOverrideCollectionModel:
+    enabled: bool | None = None
+    if context.operation is not CollectionOperation.DELETE:
+        if _message(context.fields, 2) is not None:
+            enabled = True
+        elif _message(context.fields, 1) is not None:
+            enabled = False
+    return DeepMopOverrideCollectionModel(
+        **context.common(),
+        enabled=enabled,
+    )
+
+
+def _decode_water_flow(context: _DecodeContext) -> WaterFlowOverrideCollectionModel:
+    factor: float | None = None
+    if context.operation is not CollectionOperation.DELETE:
+        detail = _parse(_message(context.fields, 1) or b"", limit=16)
+        factor = _float32(detail, 1)
+        if factor is None:
+            factor = 0.0
+    return WaterFlowOverrideCollectionModel(
+        **context.common(),
+        factor=factor,
+    )
+
+
+def _decode_time_zone(context: _DecodeContext) -> TimeZoneCollectionModel:
+    detail = _parse(_message(context.fields, 1) or b"", limit=16)
+    raw_offset = _integer(detail, 3)
+    return TimeZoneCollectionModel(
+        **context.common(),
+        time_zone=_text(detail, 2),
+        utc_offset=(
+            timedelta(seconds=_signed64(raw_offset)) if raw_offset is not None else None
+        ),
+    )
+
+
+def _decode_bag_pass(context: _DecodeContext) -> BagPassCollectionModel:
+    active_data = _message(context.fields, 1)
+    active = _parse(active_data or b"", limit=16)
+    return BagPassCollectionModel(
+        **context.common(),
+        owned=active_data is not None,
+        started_at=_timestamp(_message(active, 1)),
+        expires_at=_timestamp(_message(active, 2)),
+    )
+
+
 def _decode_structured(context: _DecodeContext) -> StructuredCollectionModel:
     return StructuredCollectionModel(
         **context.common(),
@@ -1062,11 +1143,11 @@ _decoders: dict[str, _Decoder] = {
     "app_customer_info": _decode_customer,
     "jukebox_state": _decode_jukebox,
     "voice_available": _decode_binary,
-    "user_audio_recording_state": _decode_structured,
-    "deep_mop_override_setting_state": _decode_structured,
-    "water_flow_override_state": _decode_structured,
-    "time_zone": _decode_structured,
-    "bag_pass_status": _decode_structured,
+    "user_audio_recording_state": _decode_audio_recording,
+    "deep_mop_override_setting_state": _decode_deep_mop,
+    "water_flow_override_state": _decode_water_flow,
+    "time_zone": _decode_time_zone,
+    "bag_pass_status": _decode_bag_pass,
 }
 if frozenset(_decoders) != KNOWN_TARGET_SET:
     missing = sorted(KNOWN_TARGET_SET - _decoders.keys())
@@ -1117,11 +1198,11 @@ COLLECTION_MODEL_TYPES = MappingProxyType(
         "app_customer_info": CustomerInfoCollectionModel,
         "jukebox_state": JukeboxCollectionModel,
         "voice_available": BinarySettingCollectionModel,
-        "user_audio_recording_state": StructuredCollectionModel,
-        "deep_mop_override_setting_state": StructuredCollectionModel,
-        "water_flow_override_state": StructuredCollectionModel,
-        "time_zone": StructuredCollectionModel,
-        "bag_pass_status": StructuredCollectionModel,
+        "user_audio_recording_state": AudioRecordingStateCollectionModel,
+        "deep_mop_override_setting_state": DeepMopOverrideCollectionModel,
+        "water_flow_override_state": WaterFlowOverrideCollectionModel,
+        "time_zone": TimeZoneCollectionModel,
+        "bag_pass_status": BagPassCollectionModel,
     }
 )
 if frozenset(COLLECTION_MODEL_TYPES) != KNOWN_TARGET_SET:

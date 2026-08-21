@@ -754,7 +754,7 @@ class CommandExecutor:
         return await self.execute(DeepMopOverrideCommand(enabled))
 
     async def set_water_flow_override(self, factor: float) -> CommandReceipt:
-        """Set the retained water-flow multiplier."""
+        """Set the retained 0.5x-2.0x multiplier; use 1.0x for neutral."""
 
         return await self.execute(WaterFlowOverrideCommand(factor))
 

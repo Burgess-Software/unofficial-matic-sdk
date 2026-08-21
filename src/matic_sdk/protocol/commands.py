@@ -754,6 +754,10 @@ class _VerifiedWaterFlowOverrideCodec:
             command.factor,
             field_name="settings.water_flow_override factor",
         )
+        if not 0.5 <= command.factor <= 2.0:
+            raise ValueError(
+                "settings.water_flow_override factor must be between 0.5 and 2.0"
+            )
         payload = encode_bytes_field(1, encode_fixed32_field(1, factor_bits))
         return EncodedCommand(payload, "water_flow_override_command")
 
@@ -3406,10 +3410,13 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         fields=("mode: Ambient | DirectionOfArrival | WakeWord | Idle",),
         target="user_audio_recording_command",
         wire_verified=True,
+        live_verified=True,
         evidence=(
             "Matic Android 1.172.1 retained Protobufable conversion and exact "
-            "ProtoFormat serializer disassembly for all four variants; changes "
-            "recording state, carries no audio, and is not live-tested"
+            "ProtoFormat serializer disassembly for all four variants; on "
+            "2026-08-21 Idle, Ambient, and DirectionOfArrival state effects "
+            "were observed, while WakeWord was acknowledged without a state "
+            "transition; the command carries no audio"
         ),
     ),
     _spec(
@@ -3421,9 +3428,11 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         fields=("enabled: bool",),
         target="deep_mop_override_setting_command",
         wire_verified=True,
+        live_verified=True,
         evidence=(
             "Matic Android 1.172.1 sender poll path maps false/true directly "
-            "to the retained generated oneof serializer; not live-tested"
+            "to the retained generated oneof serializer; acknowledged true and "
+            "false state transitions were observed on 2026-08-21"
         ),
     ),
     _spec(
@@ -3432,13 +3441,14 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         CommandRisk.PERSISTENT,
         WaterFlowOverrideCommand,
         "WaterFlowOverrideCommand",
-        fields=("factor: finite float32",),
+        fields=("factor: float32 in app range 0.5 through 2.0",),
         target="water_flow_override_command",
         wire_verified=True,
+        live_verified=True,
         evidence=(
             "Matic Android 1.172.1 sender poll path and retained generated "
-            "nested fixed32 serializer; the app exposes no narrower supported "
-            "range and the command is not live-tested"
+            "nested fixed32 serializer; Stable 172 UI constrains the factor "
+            "to 0.5 through 2.0 in 0.1 steps, and live 1.0 delivery was observed"
         ),
     ),
     _spec(

@@ -567,7 +567,7 @@ class DeepMopOverrideCommand(ControlCommand):
 
 @dataclass(frozen=True, slots=True)
 class WaterFlowOverrideCommand(ControlCommand):
-    """Set the robot's retained water-flow multiplier."""
+    """Set the retained 0.5x-2.0x water-flow multiplier; 1.0x is neutral."""
 
     factor: float
     command_prefix: ClassVar[str] = "settings"

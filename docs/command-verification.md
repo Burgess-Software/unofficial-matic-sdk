@@ -1,7 +1,7 @@
 # Command verification ledger
 
 This is the protocol-25 command boundary implemented by the SDK: 70 documented
-intents, 70 exact `wire_verified` formats and registered codecs, and 12 command
+intents, 70 exact `wire_verified` formats and registered codecs, and 15 command
 intents with live delivery evidence. `Wire / yes` means the protobuf body,
 Hermes target, and surrounding channel envelope are exact and the codec is
 registered.
@@ -63,8 +63,8 @@ explicitly says yes.
 | `settings.matter_pairing` | `matter_pairing_command` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
 | `settings.preview_release` | `request_preview_release_command` | Wire / yes | No | persistent | Offline native-serializer golden proof only |
 | `settings.jukebox` | `jukebox_command` | Wire / yes | Yes | persistent | Jingle Bells start and stop were acknowledged on 2026-07-29, retained state transitioned both ways, and the nearby owner heard the track |
-| `settings.deep_mop_override` | `deep_mop_override_setting_command` | Wire / yes | No | persistent | Stable 172 sender-to-serializer false/true mapping proven offline |
-| `settings.water_flow_override` | `water_flow_override_command` | Wire / yes | No | persistent | Stable 172 nested fixed32 serializer proven offline; no narrower supported range was recovered |
+| `settings.deep_mop_override` | `deep_mop_override_setting_command` | Wire / yes | Yes | persistent | On 2026-08-21 acknowledged true/false commands produced `1200`/`0a00` retained states and restored disabled |
+| `settings.water_flow_override` | `water_flow_override_command` | Wire / yes | Yes | persistent | On 2026-08-21 an acknowledged `1.0` command produced the exact nested fixed32 state; the app range is `0.5`-`2.0` and `1.0` is neutral |
 | `schedule.add_or_modify` | `edit_schedule` | Wire / yes | No | persistent | Full 1,905-byte standard event and custom-area structures proven offline |
 | `schedule.remove` | `edit_schedule` | Wire / yes | No | destructive | Destructive; offline wire proof only |
 | `schedule.toggle` | `edit_schedule` | Wire / yes | No | persistent | Offline native-serializer golden proof only |
@@ -76,7 +76,7 @@ explicitly says yes.
 | `media.flush_rolling_buffer` | `recording_command` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
 | `media.confirm_save` | `recording_upload_confirmation` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
 | `media.confirm_delete` | `recording_upload_confirmation` | Wire / yes | No | destructive | Destructive; offline wire proof only |
-| `media.user_audio_recording` | `user_audio_recording_command` | Wire / yes | No | sensitive | Stable 172 Idle/Ambient/DOA/Wake goldens proven offline; changes state and carries no audio samples |
+| `media.user_audio_recording` | `user_audio_recording_command` | Wire / yes | Yes | sensitive | On 2026-08-21 Idle, Ambient, and DOA produced exact retained states; Wake Word was acknowledged without an observed `0803` transition; no audio samples were captured |
 | `telemetry.uploader_config` | `uploader_config_command` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |
 | `telemetry.support_ssh_permission` | `user_tunnel_ssh_permission_command` | Wire / yes | No | sensitive | Offline wire proof only; no shell access implied |
 | `telemetry.push_notification_subscription` | `subscribe_push_notifications` | Wire / yes | No | sensitive | Offline native-serializer golden proof only |

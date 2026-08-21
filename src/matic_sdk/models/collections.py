@@ -14,7 +14,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, TypeAlias
 from uuid import UUID
 
-from matic_sdk.models.control import JukeboxTrack
+from matic_sdk.models.control import AudioRecordingMode, JukeboxTrack
 from matic_sdk.protocol.collections import CollectionOperation
 from matic_sdk.protocol.wire import WireField
 
@@ -377,6 +377,48 @@ class BinarySettingCollectionModel(CollectionModel):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class AudioRecordingStateCollectionModel(CollectionModel):
+    """Current Stable 172 audio-processing mode; no audio samples are exposed."""
+
+    mode: AudioRecordingMode | str | None
+
+    @property
+    def recording(self) -> bool:
+        return self.mode is not None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class DeepMopOverrideCollectionModel(CollectionModel):
+    """Whether the retained deep-mop override is enabled."""
+
+    enabled: bool | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class WaterFlowOverrideCollectionModel(CollectionModel):
+    """Retained water-flow multiplier from the app-supported 0.5x-2.0x range."""
+
+    factor: float | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class TimeZoneCollectionModel(CollectionModel):
+    """Robot time-zone identifier and current UTC offset."""
+
+    time_zone: str | None
+    utc_offset: timedelta | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class BagPassCollectionModel(CollectionModel):
+    """Bag-pass ownership interval recovered from Stable 172 native parsing."""
+
+    owned: bool
+    started_at: datetime | None
+    expires_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class MatterPairingCollectionModel(CollectionModel):
     """Matter pairing state; pairing codes are intentionally hidden from repr."""
 
@@ -474,6 +516,11 @@ class JukeboxCollectionModel(CollectionModel):
 
 FriendlyCollectionModel: TypeAlias = (
     StructuredCollectionModel
+    | AudioRecordingStateCollectionModel
+    | BagPassCollectionModel
+    | DeepMopOverrideCollectionModel
+    | WaterFlowOverrideCollectionModel
+    | TimeZoneCollectionModel
     | MapTileCollectionModel
     | PoseCollectionModel
     | DockDetectionCollectionModel
@@ -509,6 +556,8 @@ FriendlyCollectionModel: TypeAlias = (
 
 __all__ = [
     "ActiveSessionCollectionModel",
+    "AudioRecordingStateCollectionModel",
+    "BagPassCollectionModel",
     "BinarySettingCollectionModel",
     "CollectionModel",
     "CoverageHistoryCollectionModel",
@@ -522,6 +571,7 @@ __all__ = [
     "CuesTaskIntent",
     "CuesVoiceStatus",
     "CustomerInfoCollectionModel",
+    "DeepMopOverrideCollectionModel",
     "DockDetectionCollectionModel",
     "FlythroughCollectionModel",
     "FlythroughPose",
@@ -548,11 +598,13 @@ __all__ = [
     "SinkSummonScheduleCollectionModel",
     "SshPermissionCollectionModel",
     "StructuredCollectionModel",
+    "TimeZoneCollectionModel",
     "UpdateStateCollectionModel",
     "UploaderConfigCollectionModel",
     "Vector2",
     "Vector3",
     "VersionCollectionModel",
+    "WaterFlowOverrideCollectionModel",
     "WifiStatusCollectionModel",
     "ZoneCollectionModel",
 ]

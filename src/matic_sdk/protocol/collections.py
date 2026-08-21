@@ -53,6 +53,8 @@ DEVICE_TARGETS = (
     "current_version",
     "coverage_time",
     "update_state",
+    "voice_available",
+    "time_zone",
 )
 SETTINGS_TARGETS = (
     "petwaste_enabled_state",
@@ -64,6 +66,9 @@ SETTINGS_TARGETS = (
     "rolling_recordings_config_state",
     "uploader_config_state",
     "user_tunnel_ssh_permission",
+    "user_audio_recording_state",
+    "deep_mop_override_setting_state",
+    "water_flow_override_state",
 )
 SCHEDULE_TARGETS = (
     "schedule_events",
@@ -78,14 +83,7 @@ MEDIA_TARGETS = (
 )
 ACCOUNT_TARGETS = ("app_customer_info",)
 EXTRA_TARGETS = ("jukebox_state",)
-APP_STATIC_TARGETS = (
-    "voice_available",
-    "user_audio_recording_state",
-    "deep_mop_override_setting_state",
-    "water_flow_override_state",
-    "time_zone",
-    "bag_pass_status",
-)
+APP_STATIC_TARGETS = ("bag_pass_status",)
 
 TARGET_GROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
