@@ -27,7 +27,10 @@ not imply that its protobuf codec or live behavior has been verified.
 - Recording state, rolling-buffer configuration, save and deletion confirmation.
 - User-audio processing state (Idle, Ambient, DirectionOfArrival, or WakeWord);
   this changes state and does not carry or expose microphone samples.
-- Deep-mop and water-flow overrides, plus sweeper-maintenance resolution.
+- Deep-mop and water-flow overrides, plus sweeper-maintenance resolution and
+  Maintenance/Feedback triggers.
+- Brush-roll jam diagnosis, timestamped diagnostic responses, and outcome
+  dismissal.
 - Telemetry uploader configuration and managed support-tunnel permission.
 - Sensitive live-activity start/update registration; token values are hidden
   from model representations and command audit records.
@@ -52,7 +55,7 @@ allowing compatible firmware to proceed without claiming it was verified.
 
 ## Verification state
 
-The registry currently contains 70 intents. All 70 have exact protobuf formats
+The registry currently contains 74 intents. All 74 have exact protobuf formats
 and Hermes targets, carry `wire_verified` evidence, and have registered codecs
 for protocol 25. The raw-motor codec is included and applies no device-specific
 range limits. See the

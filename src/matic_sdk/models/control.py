@@ -75,6 +75,7 @@ class UserAction(StrEnum):
     REDO_COVERAGE = "redo_coverage"
     RESUME_COVERAGE = "resume_coverage"
     TRACE_CALIBRATION = "trace_calibration"
+    DIAGNOSE_BRUSH_ROLL_JAM = "diagnose_brush_roll_jam"
 
 
 @dataclass(frozen=True, slots=True)
@@ -514,15 +515,58 @@ class DeviceCommand(ControlCommand):
         return f"{self.command_prefix}.{self.action.value}"
 
 
+class SweeperMaintenanceTrigger(StrEnum):
+    """Maintenance workflow the robot should display or begin."""
+
+    MAINTENANCE = "maintenance"
+    FEEDBACK = "feedback"
+
+
 @dataclass(frozen=True, slots=True)
 class SweeperMaintenanceCommand(ControlCommand):
-    """Resolve the robot's current sweeper-maintenance condition."""
+    """Resolve the current condition or trigger a maintenance workflow."""
+
+    trigger: SweeperMaintenanceTrigger | None = None
 
     command_prefix: ClassVar[str] = "device"
 
     @property
     def command_key(self) -> str:
-        return f"{self.command_prefix}.sweeper_maintenance_resolve"
+        operation = "resolve" if self.trigger is None else "trigger"
+        return f"{self.command_prefix}.sweeper_maintenance_{operation}"
+
+
+class BrushRollJamResponse(StrEnum):
+    """One response in the app's brush-roll diagnostic workflow."""
+
+    BRUSH_ROLL_REMOVED = "brush_roll_removed"
+    START_MOTOR_TEST = "start_motor_test"
+    STOP_MOTOR_TEST = "stop_motor_test"
+
+
+@dataclass(frozen=True, slots=True)
+class BrushRollJamResponseCommand(ControlCommand):
+    """Advance a brush-roll diagnostic workflow with a timestamped response."""
+
+    response: BrushRollJamResponse
+    issued_at: datetime = field(default_factory=utc_now)
+
+    command_prefix: ClassVar[str] = "device"
+
+    @property
+    def command_key(self) -> str:
+        return f"{self.command_prefix}.brush_roll_jam_response"
+
+
+@dataclass(frozen=True, slots=True)
+class BrushRollJamOutcomeDismissCommand(ControlCommand):
+    """Dismiss the current brush-roll diagnostic outcome."""
+
+    command_prefix: ClassVar[str] = "device"
+
+    @property
+    def command_key(self) -> str:
+        return f"{self.command_prefix}.brush_roll_jam_outcome_dismiss"
 
 
 class SettingAction(StrEnum):
@@ -862,6 +906,9 @@ class CommandReceipt:
 __all__ = [
     "AddZones",
     "AudioRecordingMode",
+    "BrushRollJamOutcomeDismissCommand",
+    "BrushRollJamResponse",
+    "BrushRollJamResponseCommand",
     "CleaningAction",
     "CleaningCommand",
     "CleaningFloor",
@@ -928,6 +975,7 @@ __all__ = [
     "StainMode",
     "StandardScheduleTarget",
     "SweeperMaintenanceCommand",
+    "SweeperMaintenanceTrigger",
     "TelemetryAction",
     "TelemetryCommand",
     "TransportAckStatus",

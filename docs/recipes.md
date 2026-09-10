@@ -267,8 +267,35 @@ await robot.commands.set_raw_motors(
 This sends one direct `motor_command`. The codec is wire-verified, has not been
 exercised live, and applies no device-specific range limits.
 
+## Brush-roll diagnosis and maintenance
+
+```python
+from matic_sdk import BrushRollJamResponse, SweeperMaintenanceTrigger
+
+await robot.commands.diagnose_brush_roll_jam()
+await robot.commands.respond_to_brush_roll_jam(
+    BrushRollJamResponse.BRUSH_ROLL_REMOVED
+)
+await robot.commands.respond_to_brush_roll_jam(
+    BrushRollJamResponse.START_MOTOR_TEST
+)
+await robot.commands.respond_to_brush_roll_jam(
+    BrushRollJamResponse.STOP_MOTOR_TEST
+)
+await robot.commands.dismiss_brush_roll_jam_outcome()
+
+await robot.commands.trigger_sweeper_maintenance(
+    SweeperMaintenanceTrigger.MAINTENANCE
+)
+```
+
+These app 1.175 formats are proven from the signed client's concrete send and
+serializer paths but have not been sent to a robot. The motor-test response is
+part of the diagnostic workflow and should not be treated as a general motor
+control command.
+
 ## Evidence for additional commands
 
-All 70 documented command codecs are callable through typed models. Use the
+All 74 documented command codecs are callable through typed models. Use the
 [command verification ledger](command-verification.md) to distinguish live
 delivery checks from offline native-serializer wire proof.

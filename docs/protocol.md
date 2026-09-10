@@ -49,7 +49,7 @@ making the unverified compatibility visible to logs and test suites.
 `MaticConfig.command_protocol_version` has no default, so callers still provide
 the version observed from their robot.
 
-The registry documents 70 intents and exact Hermes targets. All 70 inner
+The registry documents 74 intents and exact Hermes targets. All 74 inner
 command encodings have been reconstructed completely, retained as synthetic
 golden evidence, and registered as codecs. This includes raw-motor setpoints;
 the SDK adds no device-specific range limits. `wire_verified` describes the
@@ -63,7 +63,7 @@ field 2 is absent in that case; the target in field 1 and `hermes-target`
 metadata still identify the command. This canonical omission is not treated as
 a missing payload.
 
-Twelve codecs have the separate SDK live-delivery flag. The remaining 53 exact
+Fifteen codecs have the separate SDK live-delivery flag. The remaining 59 exact
 formats, including raw motors, have offline wire proof only.
 Joystick sending is available directly through `robot.commands.joystick()`.
 Each call sends once; the SDK adds no background watchdog, automatic zero, or

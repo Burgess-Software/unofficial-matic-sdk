@@ -1,7 +1,7 @@
 """Evidence-backed command codec registry for Hermes protocol version 25.
 
 Static analysis recovered command type names, and offline execution of the
-official native serializers established exact payloads for all 70 documented
+official native serializers established exact payloads for all 74 documented
 protocol-25 intents. Independent protocol reconstruction, official-client
 evidence, and live testing established the surrounding ``ChannelRequest`` wire
 shape and response semantics. The default registry exposes only commands whose
@@ -17,6 +17,7 @@ import struct
 import warnings
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Protocol
@@ -25,6 +26,9 @@ from uuid import UUID, uuid4
 from matic_sdk.models.control import (
     AddZones,
     AudioRecordingMode,
+    BrushRollJamOutcomeDismissCommand,
+    BrushRollJamResponse,
+    BrushRollJamResponseCommand,
     CleaningAction,
     CleaningCommand,
     CleaningFloor,
@@ -87,6 +91,7 @@ from matic_sdk.models.control import (
     StainMode,
     StandardScheduleTarget,
     SweeperMaintenanceCommand,
+    SweeperMaintenanceTrigger,
     TelemetryAction,
     TelemetryCommand,
     UserAction,
@@ -775,14 +780,85 @@ class _VerifiedDeepMopOverrideCodec:
         return EncodedCommand(payload, "deep_mop_override_setting_command")
 
 
+def _encode_timestamp(value: datetime, *, field_name: str) -> bytes:
+    if not isinstance(value, datetime) or value.tzinfo is None:
+        raise ValueError(f"{field_name} requires an aware datetime")
+    offset = value.utcoffset()
+    if offset is None:
+        raise ValueError(f"{field_name} requires an aware datetime")
+    utc_value = value.astimezone(UTC)
+    epoch = datetime(1970, 1, 1, tzinfo=UTC)
+    delta = utc_value - epoch
+    seconds = delta.days * 86_400 + delta.seconds
+    if seconds < 0:
+        raise ValueError(f"{field_name} must not precede the Unix epoch")
+    nanos = utc_value.microsecond * 1_000
+    timestamp = encode_varint_field(1, seconds) if seconds else b""
+    if nanos:
+        timestamp += encode_varint_field(2, nanos)
+    return encode_bytes_field(1, timestamp)
+
+
 @dataclass(frozen=True, slots=True)
 class _VerifiedSweeperMaintenanceCodec:
-    """Exact Stable 172 empty resolve-arm encoder."""
+    """Exact 1.175 Resolve and Trigger oneof encoder."""
 
     def encode(self, command: ControlCommand) -> EncodedCommand:
         if not isinstance(command, SweeperMaintenanceCommand):
             raise TypeError("codec expects SweeperMaintenanceCommand")
-        return EncodedCommand(bytes.fromhex("0a00"), "sweeper_maintenance_command")
+        if command.trigger is None:
+            payload = bytes.fromhex("0a00")
+        elif isinstance(command.trigger, SweeperMaintenanceTrigger):
+            trigger_fields = {
+                SweeperMaintenanceTrigger.MAINTENANCE: 1,
+                SweeperMaintenanceTrigger.FEEDBACK: 2,
+            }
+            payload = encode_bytes_field(
+                3,
+                encode_bytes_field(trigger_fields[command.trigger], b""),
+            )
+        else:
+            raise ValueError(
+                "device.sweeper_maintenance_trigger requires SweeperMaintenanceTrigger"
+            )
+        return EncodedCommand(payload, "sweeper_maintenance_command")
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedBrushRollJamResponseCodec:
+    """Exact 1.175 timestamp and diagnostic-response oneof encoder."""
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        if not isinstance(command, BrushRollJamResponseCommand):
+            raise TypeError("codec expects BrushRollJamResponseCommand")
+        if not isinstance(command.response, BrushRollJamResponse):
+            raise ValueError(
+                "device.brush_roll_jam_response requires BrushRollJamResponse"
+            )
+        response_fields = {
+            BrushRollJamResponse.BRUSH_ROLL_REMOVED: 1,
+            BrushRollJamResponse.START_MOTOR_TEST: 2,
+            BrushRollJamResponse.STOP_MOTOR_TEST: 3,
+        }
+        payload = _encode_timestamp(
+            command.issued_at,
+            field_name="device.brush_roll_jam_response issued_at",
+        )
+        payload += encode_bytes_field(
+            3,
+            encode_bytes_field(response_fields[command.response], b""),
+        )
+        return EncodedCommand(payload, "cleaning_workflow_response")
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedBrushRollJamOutcomeDismissCodec:
+    """Exact 1.175 unit-value encoder for dismissing the outcome."""
+
+    def encode(self, command: ControlCommand) -> EncodedCommand:
+        if not isinstance(command, BrushRollJamOutcomeDismissCommand):
+            raise TypeError("codec expects BrushRollJamOutcomeDismissCommand")
+        return EncodedCommand(b"", "sweeper_jam_outcome_dismiss")
 
 
 def _encode_optional_string(field_number: int, value: str) -> bytes:
@@ -2703,6 +2779,22 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         ),
     ),
     _spec(
+        "user.diagnose_brush_roll_jam",
+        CommandFamily.USER,
+        CommandRisk.RAW_ACTUATION,
+        UserCommand,
+        "UserCommand.DiagnoseBrushRollJam",
+        payload=bytes.fromhex("9201040a020a00"),
+        target=USER_COMMAND_HERMES_TARGET,
+        wire_verified=True,
+        evidence=(
+            "Matic Android 1.175.0 UserCommand conversion and retained "
+            "CleanerDiagnosticCommand/InterruptCommand prost encoders prove "
+            "the exact no-argument payload; diagnostic motor workflow and "
+            "not live-tested"
+        ),
+    ),
+    _spec(
         "user.joystick",
         CommandFamily.USER,
         CommandRisk.MOTION,
@@ -3466,6 +3558,53 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         ),
     ),
     _spec(
+        "device.sweeper_maintenance_trigger",
+        CommandFamily.DEVICE,
+        CommandRisk.PERSISTENT,
+        SweeperMaintenanceCommand,
+        "SweeperMaintenanceCommand.Trigger",
+        fields=("trigger: Maintenance | Feedback",),
+        target="sweeper_maintenance_command",
+        wire_verified=True,
+        evidence=(
+            "Matic Android 1.175.0 sender poll path, flattened enum mapping, "
+            "and retained generated oneof serializer prove Maintenance and "
+            "Feedback payloads; not live-tested"
+        ),
+    ),
+    _spec(
+        "device.brush_roll_jam_response",
+        CommandFamily.DEVICE,
+        CommandRisk.RAW_ACTUATION,
+        BrushRollJamResponseCommand,
+        "CleaningWorkflowUserResponse",
+        fields=(
+            "issuedAt: Timestamp",
+            "response: BrushRollRemoved | StartMotorTest | StopMotorTest",
+        ),
+        target="cleaning_workflow_response",
+        wire_verified=True,
+        evidence=(
+            "Matic Android 1.175.0 concrete sender, ToProto conversion, and "
+            "CleaningWorkflowUserResponse prost encoder prove the timestamp "
+            "and all three response arms; not live-tested"
+        ),
+    ),
+    _spec(
+        "device.brush_roll_jam_outcome_dismiss",
+        CommandFamily.DEVICE,
+        CommandRisk.STATIONARY,
+        BrushRollJamOutcomeDismissCommand,
+        "Unit",
+        payload=b"",
+        target="sweeper_jam_outcome_dismiss",
+        wire_verified=True,
+        evidence=(
+            "Matic Android 1.175.0 concrete sender proves the Hermes target "
+            "and Unit protobuf value; not live-tested"
+        ),
+    ),
+    _spec(
         "telemetry.live_activity_registration",
         CommandFamily.TELEMETRY,
         CommandRisk.SENSITIVE,
@@ -3659,6 +3798,10 @@ COMMAND_REGISTRY = CommandRegistry(
             2,
         ),
         "user.trace_calibration": _VerifiedTraceCalibrationCodec(),
+        "user.diagnose_brush_roll_jam": _VerifiedUserCommandCodec(
+            UserAction.DIAGNOSE_BRUSH_ROLL_JAM,
+            bytes.fromhex("9201040a020a00"),
+        ),
         "user.joystick": _VerifiedJoystickCodec(),
         "navigation.navigate": _VerifiedNavigationCodec(NavigationMode.NAVIGATE),
         "navigation.navigate_and_wait": _VerifiedNavigationCodec(
@@ -3717,6 +3860,11 @@ COMMAND_REGISTRY = CommandRegistry(
         ),
         "device.configure_shipping": _VerifiedConfigureShippingCodec(),
         "device.sweeper_maintenance_resolve": _VerifiedSweeperMaintenanceCodec(),
+        "device.sweeper_maintenance_trigger": _VerifiedSweeperMaintenanceCodec(),
+        "device.brush_roll_jam_response": _VerifiedBrushRollJamResponseCodec(),
+        "device.brush_roll_jam_outcome_dismiss": (
+            _VerifiedBrushRollJamOutcomeDismissCodec()
+        ),
         **{
             f"settings.{action.value}": _VerifiedBinarySettingCodec(action, target)
             for action, target in _BINARY_SETTING_TARGETS.items()

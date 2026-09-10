@@ -38,8 +38,8 @@ network, settings, scheduling, media, diagnostics, update, reboot, and shutdown
 command families. The Hermes RPC and typed client-side models are static
 evidence. Each encoder in this SDK must carry its own verification level.
 
-The registry documents 70 command intents and exact Hermes targets for each.
-All 70 have exact wire formats and registered codecs for protocol 25.
+The registry documents 74 command intents and exact Hermes targets for each.
+All 74 have exact wire formats and registered codecs for protocol 25.
 Raw-motor encoding is exact and directly available without device-specific
 range limits.
 The [command verification ledger](command-verification.md)
@@ -78,7 +78,9 @@ but both retained setting states stayed false and no recording appeared in the
 app-facing media collections. Uploader opt-in remained false before and after
 the test. This establishes command delivery, not microphone-audio access.
 
-The other 53 exact formats have offline wire evidence only. No raw-actuation,
+The other 59 exact formats have offline wire evidence only. The app 1.175
+additions cover brush-roll diagnosis/response/dismissal and both
+sweeper-maintenance trigger modes; none were sent to a robot. No raw-actuation,
 destructive, network-changing, update, reboot, or shutdown command was
 live-tested. Raw-motor encoding is registered but has not been exercised live.
 All enabled typed commands are callable directly; risk classifications are

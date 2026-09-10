@@ -29,6 +29,13 @@ transition; voice, gesture, intent, and following-person fields remain `None`
 when their source event is unavailable. The model retains the original
 protobuf fields in either case.
 
+App 1.175 adds `FOLLOWING_PAUSED`, `MOVING_CLOSER`, and `MOVING_BACK` gesture
+states, `GENERAL`/`STAIN` point-to-clean kinds, brush-roll diagnostic outcomes,
+and `BOT_LOST`/`TILTED` rolling-recording reasons. Their public enums are
+available now. The nested Kabuki fields remain `None` until their wire mapping
+is proven; `REPOSITIONING` and `is_following_person` remain for compatibility
+with Stable 172 data.
+
 For a merged `TelemetrySession`, `update.model` decodes the new event and
 `update.latest_models` returns the most recent friendly model for every target
 seen so far.
@@ -74,7 +81,7 @@ collection delivers an account record; its native payload schema is typed.
 | `zones` | `ZoneCollectionModel` | Mission, zone ID/class, border and holes |
 | `coverage_plan` | `CoveragePlanCollectionModel` | Mission, goal summary and command-compatible active plan |
 | `sink_summon_locations` | `SinkSummonLocationCollectionModel` | Mission-relative location and heading |
-| `coverage_session_history` | `CoverageHistoryCollectionModel` | Mission/session, start/end time, resumability |
+| `coverage_session_history` | `CoverageHistoryCollectionModel` | Mission/session, start/end time, resumability, and confirmed Finished/UserCancelled stop outcomes |
 | `recap_history` | `RecapCollectionModel` | Month, area, session count, favorite room and durations |
 | `approximate_trajectory` | `PathCollectionModel` | Mission-relative path points |
 | `coverage_corridor` | `CoverageLineCollectionModel` | Current mission-relative corridor |

@@ -7,6 +7,7 @@ import stat
 import struct
 from base64 import b64decode
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -22,6 +23,9 @@ from matic_sdk.commands import (
 from matic_sdk.config import MaticConfig, TlsConfig
 from matic_sdk.models.control import (
     AudioRecordingMode,
+    BrushRollJamOutcomeDismissCommand,
+    BrushRollJamResponse,
+    BrushRollJamResponseCommand,
     CleaningCommand,
     CleaningFloor,
     CleaningIntensity,
@@ -64,6 +68,7 @@ from matic_sdk.models.control import (
     SettingsCommand,
     StainMode,
     SweeperMaintenanceCommand,
+    SweeperMaintenanceTrigger,
     TransportAcknowledgement,
     TransportAckStatus,
     UserAction,
@@ -166,10 +171,11 @@ def synthetic_stop_registry() -> CommandRegistry:
 def test_registry_documents_every_recovered_command_family() -> None:
     families = {spec.family for spec in COMMAND_SPECS}
     assert families == set(CommandFamily)
-    assert len(COMMAND_SPECS) == 70
+    assert len(COMMAND_SPECS) == 74
     assert all(spec.known_hermes_target for spec in COMMAND_SPECS)
     expected_keys = {
         "user.stop",
+        "user.diagnose_brush_roll_jam",
         "user.joystick",
         "navigation.navigate",
         "coverage.normal",
@@ -180,6 +186,9 @@ def test_registry_documents_every_recovered_command_family() -> None:
         "wifi.connect",
         "device.rename",
         "device.sweeper_maintenance_resolve",
+        "device.sweeper_maintenance_trigger",
+        "device.brush_roll_jam_response",
+        "device.brush_roll_jam_outcome_dismiss",
         "settings.child_lock",
         "schedule.add_or_modify",
         "media.recording_enable",
@@ -204,7 +213,7 @@ def test_default_registry_exposes_only_verified_codecs() -> None:
         for spec in COMMAND_SPECS
         if spec.evidence_level is CodecEvidenceLevel.WIRE_VERIFIED
     }
-    assert len(wire_verified) == 70
+    assert len(wire_verified) == 74
     assert wire_verified == available
     live_verified = {spec.key for spec in COMMAND_SPECS if spec.live_delivery_verified}
     assert live_verified == {
@@ -298,6 +307,61 @@ def test_stable_172_cleaning_override_commands_match_native_goldens() -> None:
         )
 
 
+def test_app_175_brush_and_maintenance_commands_match_native_goldens() -> None:
+    issued_at = datetime(2026, 9, 10, 12, 34, 56, 123456, tzinfo=UTC)
+    expected = (
+        (
+            UserCommand(UserAction.DIAGNOSE_BRUSH_ROLL_JAM),
+            "9201040a020a00",
+            "user_command",
+        ),
+        (
+            SweeperMaintenanceCommand(SweeperMaintenanceTrigger.MAINTENANCE),
+            "1a020a00",
+            "sweeper_maintenance_command",
+        ),
+        (
+            SweeperMaintenanceCommand(SweeperMaintenanceTrigger.FEEDBACK),
+            "1a021200",
+            "sweeper_maintenance_command",
+        ),
+        (
+            BrushRollJamResponseCommand(
+                BrushRollJamResponse.BRUSH_ROLL_REMOVED,
+                issued_at,
+            ),
+            "0a0b08f0c78ad506108094ef3a1a020a00",
+            "cleaning_workflow_response",
+        ),
+        (
+            BrushRollJamResponseCommand(
+                BrushRollJamResponse.START_MOTOR_TEST,
+                issued_at,
+            ),
+            "0a0b08f0c78ad506108094ef3a1a021200",
+            "cleaning_workflow_response",
+        ),
+        (
+            BrushRollJamResponseCommand(
+                BrushRollJamResponse.STOP_MOTOR_TEST,
+                issued_at,
+            ),
+            "0a0b08f0c78ad506108094ef3a1a021a00",
+            "cleaning_workflow_response",
+        ),
+        (
+            BrushRollJamOutcomeDismissCommand(),
+            "",
+            "sweeper_jam_outcome_dismiss",
+        ),
+    )
+    for command, payload_hex, target in expected:
+        assert encode_command(command, protocol_version=25) == EncodedCommand(
+            bytes.fromhex(payload_hex),
+            target,
+        )
+
+
 def test_stable_172_live_activity_commands_match_native_goldens() -> None:
     start = LiveActivityRegistrationCommand(
         "device",
@@ -344,6 +408,25 @@ def test_stable_172_live_activity_commands_match_native_goldens() -> None:
 def test_stable_172_command_codecs_reject_invalid_values(
     command: object,
 ) -> None:
+    with pytest.raises(ValueError):
+        encode_command(command, protocol_version=25)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        SweeperMaintenanceCommand("maintenance"),  # type: ignore[arg-type]
+        BrushRollJamResponseCommand(  # type: ignore[arg-type]
+            "start_motor_test",
+            datetime(2026, 9, 10, tzinfo=UTC),
+        ),
+        BrushRollJamResponseCommand(
+            BrushRollJamResponse.START_MOTOR_TEST,
+            datetime(2026, 9, 10),
+        ),
+    ],
+)
+def test_app_175_command_codecs_reject_invalid_values(command: object) -> None:
     with pytest.raises(ValueError):
         encode_command(command, protocol_version=25)  # type: ignore[arg-type]
 
@@ -1751,6 +1834,45 @@ async def test_stable_172_convenience_methods_route_typed_commands_once() -> Non
         "water_flow_override_command",
         "sweeper_maintenance_command",
         "live_activity_registration",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_app_175_convenience_methods_route_typed_commands_once() -> None:
+    transport = AcknowledgingTransport()
+    executor = CommandExecutor(
+        transport,
+        protocol_version=25,
+        tls_identity_verified=True,
+    )
+    issued_at = datetime(2026, 9, 10, 12, 34, 56, 123456, tzinfo=UTC)
+
+    receipts = [
+        await executor.diagnose_brush_roll_jam(),
+        await executor.trigger_sweeper_maintenance(
+            SweeperMaintenanceTrigger.MAINTENANCE
+        ),
+        await executor.respond_to_brush_roll_jam(
+            BrushRollJamResponse.START_MOTOR_TEST,
+            issued_at=issued_at,
+        ),
+        await executor.dismiss_brush_roll_jam_outcome(),
+    ]
+
+    assert [receipt.command_key for receipt in receipts] == [
+        "user.diagnose_brush_roll_jam",
+        "device.sweeper_maintenance_trigger",
+        "device.brush_roll_jam_response",
+        "device.brush_roll_jam_outcome_dismiss",
+    ]
+    assert transport.commands == [
+        EncodedCommand(bytes.fromhex("9201040a020a00"), "user_command"),
+        EncodedCommand(bytes.fromhex("1a020a00"), "sweeper_maintenance_command"),
+        EncodedCommand(
+            bytes.fromhex("0a0b08f0c78ad506108094ef3a1a021200"),
+            "cleaning_workflow_response",
+        ),
+        EncodedCommand(b"", "sweeper_jam_outcome_dismiss"),
     ]
 
 

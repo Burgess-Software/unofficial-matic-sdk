@@ -16,6 +16,9 @@ from uuid import UUID, uuid4
 from matic_sdk.models.control import (
     AddZones,
     AudioRecordingMode,
+    BrushRollJamOutcomeDismissCommand,
+    BrushRollJamResponse,
+    BrushRollJamResponseCommand,
     CommandReceipt,
     ControlCommand,
     CoverageAction,
@@ -58,6 +61,7 @@ from matic_sdk.models.control import (
     SplitRoom,
     StainMode,
     SweeperMaintenanceCommand,
+    SweeperMaintenanceTrigger,
     TransportAcknowledgement,
     UserAction,
     UserAudioRecordingCommand,
@@ -334,6 +338,11 @@ class CommandExecutor:
 
     async def dock(self) -> CommandReceipt:
         return await self.execute(UserCommand(UserAction.DOCK))
+
+    async def diagnose_brush_roll_jam(self) -> CommandReceipt:
+        """Begin the app's brush-roll diagnostic workflow."""
+
+        return await self.execute(UserCommand(UserAction.DIAGNOSE_BRUSH_ROLL_JAM))
 
     async def joystick(
         self,
@@ -762,6 +771,34 @@ class CommandExecutor:
         """Resolve the robot's current sweeper-maintenance condition."""
 
         return await self.execute(SweeperMaintenanceCommand())
+
+    async def trigger_sweeper_maintenance(
+        self,
+        trigger: SweeperMaintenanceTrigger,
+    ) -> CommandReceipt:
+        """Trigger the robot's Maintenance or Feedback workflow."""
+
+        return await self.execute(SweeperMaintenanceCommand(trigger))
+
+    async def respond_to_brush_roll_jam(
+        self,
+        response: BrushRollJamResponse,
+        *,
+        issued_at: datetime | None = None,
+    ) -> CommandReceipt:
+        """Send one timestamped response in the brush-roll diagnostic flow."""
+
+        return await self.execute(
+            BrushRollJamResponseCommand(
+                response,
+                issued_at if issued_at is not None else utc_now(),
+            )
+        )
+
+    async def dismiss_brush_roll_jam_outcome(self) -> CommandReceipt:
+        """Dismiss the current brush-roll diagnostic outcome."""
+
+        return await self.execute(BrushRollJamOutcomeDismissCommand())
 
     async def register_live_activity(
         self,

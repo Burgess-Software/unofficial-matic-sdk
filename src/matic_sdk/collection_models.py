@@ -26,6 +26,7 @@ from matic_sdk.models.collections import (
     CoverageHistoryCollectionModel,
     CoverageLineCollectionModel,
     CoveragePlanCollectionModel,
+    CoverageSessionOutcome,
     CoverageTimeCollectionModel,
     CustomerInfoCollectionModel,
     DeepMopOverrideCollectionModel,
@@ -51,6 +52,7 @@ from matic_sdk.models.collections import (
     RobotStatusCollectionModel,
     RollingRecordingCollectionModel,
     ScheduleEventCollectionModel,
+    SessionStopReason,
     SinkSummonLocationCollectionModel,
     SinkSummonScheduleCollectionModel,
     SshPermissionCollectionModel,
@@ -635,6 +637,18 @@ def _decode_sink_location(
 
 def _decode_history(context: _DecodeContext) -> CoverageHistoryCollectionModel:
     event = _parse(_message(context.fields, 5) or b"", limit=256)
+    stop_reason_fields = _parse(_message(event, 10) or b"", limit=16)
+    stop_reason: SessionStopReason | str | None = None
+    if stop_reason_fields:
+        # These two oneof tags are confirmed both by the 1.175 native
+        # conversion and by captured robot history. Preserve any other tag
+        # explicitly until its app-to-wire mapping is independently proven.
+        known_stop_reasons = {
+            5: SessionStopReason.FINISHED,
+            8: SessionStopReason.USER_CANCELLED,
+        }
+        variant = stop_reason_fields[0].number
+        stop_reason = known_stop_reasons.get(variant, f"unknown_variant_{variant}")
     return CoverageHistoryCollectionModel(
         **context.common(),
         session_id=_uuid(context.key),
@@ -642,6 +656,11 @@ def _decode_history(context: _DecodeContext) -> CoverageHistoryCollectionModel:
         started_at=_timestamp(_message(event, 3)),
         ended_at=_timestamp(_message(event, 4)),
         resumable=bool(_integer(context.fields, 6) or 0),
+        outcome=(
+            CoverageSessionOutcome(completion_kind=None, stop_reason=stop_reason)
+            if stop_reason is not None
+            else None
+        ),
     )
 
 

@@ -38,7 +38,7 @@ authenticated local-network service without a cloud relay.
 | Schedules and settings | Create schedules and change supported preferences through typed methods |
 | Exports | Assemble RGB/coverage/semantic maps, export sparse colored voxels as PLY, and recover retained WebP media |
 
-All 70 documented command intents have registered protocol-25 codecs. The
+All 74 documented command intents have registered protocol-25 codecs. The
 [verification ledger](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/command-verification.md)
 distinguishes commands exercised on a real robot from formats proven only
 through offline native serialization.
@@ -360,7 +360,7 @@ Common methods include:
 | Schedules | `add_or_modify_schedule()`, `toggle_schedule()`, `remove_schedule()` |
 | Speaker and voice | `set_jukebox_track()`, `stop_jukebox()`, `set_voice_enabled()`, `set_user_audio_recording()` |
 | Settings | `set_binary_setting()`, `set_auto_record_voice_enabled()`, `set_deep_mop_override_enabled()`, `set_water_flow_override()` |
-| Cleaning mechanisms | `set_raw_motors()`, `resolve_sweeper_maintenance()` |
+| Cleaning mechanisms | `set_raw_motors()`, `diagnose_brush_roll_jam()`, `respond_to_brush_roll_jam()`, `dismiss_brush_roll_jam_outcome()`, `resolve_sweeper_maintenance()`, `trigger_sweeper_maintenance()` |
 | Notifications | `register_live_activity()` |
 
 `register_live_activity()` sends sensitive app notification credentials over
@@ -390,6 +390,7 @@ settings, and raw-motor examples are in the
 - [Troubleshooting first connection and captures](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/troubleshooting.md)
 - [Collection model reference](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/collections.md)
 - [Command verification ledger](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/command-verification.md)
+- [Android app 1.175 compatibility audit](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/app-175-audit.md)
 - [Stable 172 client-surface audit](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/stable-172-audit.md)
 - [Control behavior and caller responsibility](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/safety.md)
 - [Protocol notes](https://github.com/Burgess-Software/unofficial-matic-sdk/blob/main/docs/protocol.md)

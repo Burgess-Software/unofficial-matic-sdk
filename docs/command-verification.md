@@ -1,7 +1,7 @@
 # Command verification ledger
 
-This is the protocol-25 command boundary implemented by the SDK: 70 documented
-intents, 70 exact `wire_verified` formats and registered codecs, and 15 command
+This is the protocol-25 command boundary implemented by the SDK: 74 documented
+intents, 74 exact `wire_verified` formats and registered codecs, and 15 command
 intents with live delivery evidence. `Wire / yes` means the protobuf body,
 Hermes target, and surrounding channel envelope are exact and the codec is
 registered.
@@ -24,6 +24,7 @@ explicitly says yes.
 | `user.redo_coverage` | `user_command` | Wire / yes | No | motion | No motion-changing live test |
 | `user.resume_coverage` | `user_command` | Wire / yes | No | motion | No motion-changing live test |
 | `user.trace_calibration` | `user_command` | Wire / yes | No | raw actuation | Hazardous motion; offline wire proof only |
+| `user.diagnose_brush_roll_jam` | `user_command` | Wire / yes | No | raw actuation | App 1.175 nested diagnostic serializer proof; workflow may operate the brush motor and is not live-tested |
 | `user.joystick` | `user_command` | Wire / yes | Yes | motion | Each call sends once with no SDK watchdog; a bounded forward sequence produced 25 acknowledged sends and a docked-to-ready state transition; explicit zero plus Stop completed |
 | `navigation.navigate` | `user_command` | Wire / yes | Yes | motion | On 2026-07-28 a corrected canonical-frame command reached the requested pose within 0.012 m and 0.078 rad; Stop was acknowledged and no robot errors appeared |
 | `navigation.navigate_and_wait` | `user_command` | Wire / yes | No | motion | Exact fixed 900-second wait envelope; no live test |
@@ -56,6 +57,9 @@ explicitly says yes.
 | `device.clear_calibration` | `clear_online_calib_command` | Wire / yes | No | destructive | Destructive; offline wire proof only |
 | `device.configure_shipping` | `configure_shipping_command` | Wire / yes | No | destructive | Destructive; offline wire proof only |
 | `device.sweeper_maintenance_resolve` | `sweeper_maintenance_command` | Wire / yes | No | persistent | Stable 172 retained Resolve-arm serializer proof; not live-tested |
+| `device.sweeper_maintenance_trigger` | `sweeper_maintenance_command` | Wire / yes | No | persistent | App 1.175 Maintenance and Feedback oneof arms proven by the concrete sender and generated serializer; not live-tested |
+| `device.brush_roll_jam_response` | `cleaning_workflow_response` | Wire / yes | No | raw actuation | App 1.175 timestamp plus BrushRollRemoved/StartMotorTest/StopMotorTest arms proven statically; not live-tested |
+| `device.brush_roll_jam_outcome_dismiss` | `sweeper_jam_outcome_dismiss` | Wire / yes | No | stationary | App 1.175 concrete Unit sender and target proof; not live-tested |
 | `settings.child_lock` | `child_lock_enabled_command` | Wire / yes | Yes | persistent | Same-value write acknowledged; no transition claimed |
 | `settings.pet_waste_avoidance` | `petwaste_enabled_command` | Wire / yes | Yes | persistent | Same-value write acknowledged; no transition claimed |
 | `settings.voice` | `voice_enabled_command` | Wire / yes | Yes | persistent | True and false writes were acknowledged on 2026-07-29, but retained state stayed false |

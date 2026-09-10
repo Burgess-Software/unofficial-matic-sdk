@@ -14,9 +14,12 @@ from matic_sdk.models.collections import (
     AudioRecordingStateCollectionModel,
     BagPassCollectionModel,
     BinarySettingCollectionModel,
+    BrushRollJamOutcome,
+    CoverageHistoryCollectionModel,
     CuesGestureIntent,
     CuesGestureStatus,
     CuesIntentCategory,
+    CuesPointToCleanIntentKind,
     CuesRecordingIntent,
     CuesTaskIntent,
     CuesVoiceStatus,
@@ -26,7 +29,9 @@ from matic_sdk.models.collections import (
     MediaCollectionModel,
     PoseCollectionModel,
     RobotStatusCollectionModel,
+    RollingRecordingReason,
     ScheduleEventCollectionModel,
+    SessionStopReason,
     StructuredCollectionModel,
     TimeZoneCollectionModel,
     VersionCollectionModel,
@@ -270,13 +275,49 @@ def test_robot_status_and_version_models_expose_live_control_feedback() -> None:
     assert version.protocol_version == 26
 
 
-def test_stable_172_cues_enums_are_public_string_values() -> None:
+def test_app_175_cues_and_diagnostic_enums_are_public_string_values() -> None:
     assert CuesVoiceStatus.LISTENING_FOR_WAKE_WORD == "listening_for_wake_word"
     assert CuesGestureStatus.POINTED_TARGET_ACCEPTED == "pointed_target_accepted"
     assert CuesIntentCategory.GESTURE == "gesture"
     assert CuesTaskIntent.REDO_LAST_CLEAN == "redo_last_clean"
     assert CuesGestureIntent.FOLLOW_PERSON == "follow_person"
+    assert CuesGestureStatus.FOLLOWING_PAUSED == "following_paused"
+    assert CuesGestureStatus.MOVING_CLOSER == "moving_closer"
+    assert CuesGestureStatus.MOVING_BACK == "moving_back"
+    assert CuesPointToCleanIntentKind.STAIN == "stain"
     assert CuesRecordingIntent.RECORD_DOA == "record_doa"
+    assert RollingRecordingReason.BOT_LOST == "bot_lost"
+    assert RollingRecordingReason.TILTED == "tilted"
+    assert BrushRollJamOutcome.INSUFFICIENT_CHARGING == "insufficient_charging"
+
+
+def test_history_decodes_confirmed_app_175_stop_reason_variants() -> None:
+    for variant, expected in (
+        (5, SessionStopReason.FINISHED),
+        (8, SessionStopReason.USER_CANCELLED),
+    ):
+        event = encode_bytes_field(10, encode_bytes_field(variant, b""))
+        history = decode_collection_payload(
+            "coverage_session_history",
+            encode_bytes_field(5, event),
+        )
+
+        assert isinstance(history, CoverageHistoryCollectionModel)
+        assert history.outcome is not None
+        assert history.outcome.stop_reason is expected
+        assert history.outcome.completion_kind is None
+
+
+def test_history_preserves_unmapped_stop_reason_variant() -> None:
+    event = encode_bytes_field(10, encode_bytes_field(12, b""))
+    history = decode_collection_payload(
+        "coverage_session_history",
+        encode_bytes_field(5, event),
+    )
+
+    assert isinstance(history, CoverageHistoryCollectionModel)
+    assert history.outcome is not None
+    assert history.outcome.stop_reason == "unknown_variant_12"
 
 
 def test_schedule_and_media_models_have_named_fields() -> None:

@@ -165,6 +165,48 @@ class SinkSummonLocationCollectionModel(CollectionModel):
     heading_radians: float | None
 
 
+class SessionCompletionKind(StrEnum):
+    """App-facing classification of how much of a cleaning session ran."""
+
+    COMPLETED = "completed"
+    INCOMPLETE = "incomplete"
+    NOT_STARTED = "not_started"
+    UNSPECIFIED = "unspecified"
+
+
+class SessionStopReason(StrEnum):
+    """Reasons exposed by the app for a historical cleaning-session stop."""
+
+    BOT_CANCELLED = "bot_cancelled"
+    FINISHED = "finished"
+    LOST = "lost"
+    MISSION_DELETED = "mission_deleted"
+    USER_CANCELLED = "user_cancelled"
+    USER_SKIPPED = "user_skipped"
+    REPLACED_BY_SCHEDULE = "replaced_by_schedule"
+    WRONG_CANONICAL_MISSION = "wrong_canonical_mission"
+    PROLONGED_PAUSE = "prolonged_pause"
+    STALE = "stale"
+    BOT_SKIPPED = "bot_skipped"
+    PARTITION_DELETED = "partition_deleted"
+
+
+class StopReasonKind(StrEnum):
+    """Presentation category returned by app 1.175 for a stop reason."""
+
+    INCOMPLETE = "incomplete"
+    STOPPED_INTENTIONALLY = "stopped_intentionally"
+    STOPPED_UNEXPECTEDLY = "stopped_unexpectedly"
+
+
+@dataclass(frozen=True, slots=True)
+class CoverageSessionOutcome:
+    """Outcome details available for one historical cleaning session."""
+
+    completion_kind: SessionCompletionKind | str | None
+    stop_reason: SessionStopReason | str | None
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class CoverageHistoryCollectionModel(CollectionModel):
     """One historical coverage-session summary."""
@@ -174,6 +216,7 @@ class CoverageHistoryCollectionModel(CollectionModel):
     started_at: datetime | None
     ended_at: datetime | None
     resumable: bool
+    outcome: CoverageSessionOutcome | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -271,6 +314,10 @@ class CuesGestureStatus(StrEnum):
     FACING_USER = "facing_user"
     PERSON_NOT_FOUND = "person_not_found"
     FOLLOWING = "following"
+    FOLLOWING_PAUSED = "following_paused"
+    MOVING_CLOSER = "moving_closer"
+    MOVING_BACK = "moving_back"
+    # Retained for callers decoding Stable 172 data; removed from app 1.175.
     REPOSITIONING = "repositioning"
     REAWAITING_POINTED_TARGET = "reawaiting_pointed_target"
     AWAITING_STEP_BACK = "awaiting_step_back"
@@ -307,12 +354,62 @@ class CuesGestureIntent(StrEnum):
     POINT_TO_CLEAN = "point_to_clean"
 
 
+class CuesPointToCleanIntentKind(StrEnum):
+    """Point-to-clean classification added by app 1.175."""
+
+    GENERAL = "general"
+    STAIN = "stain"
+
+
 class CuesRecordingIntent(StrEnum):
     """Diagnostic recording intents exposed by the Cues classifier."""
 
     ROLLING_RECORDING = "rolling_recording"
     AMBIENT_AUDIO = "ambient_audio"
     RECORD_DOA = "record_doa"
+
+
+class BrushRollJamOutcome(StrEnum):
+    """Result exposed by the app's brush-roll diagnostic workflow."""
+
+    NOT_JAMMED = "not_jammed"
+    STILL_JAMMED = "still_jammed"
+    FAILED_TO_RUN = "failed_to_run"
+    INSUFFICIENT_CHARGING = "insufficient_charging"
+
+
+class RollingRecordingReason(StrEnum):
+    """Reasons exposed by app 1.175 for retaining a rolling recording."""
+
+    BOT_LOST = "bot_lost"
+    BRUSH_ROLL_JAMMED = "brush_roll_jammed"
+    BRUSH_ROLL_MISSING = "brush_roll_missing"
+    CLOTH_DETECTED = "cloth_detected"
+    CRITICAL_STUCK = "critical_stuck"
+    DOA_FAILED = "doa_failed"
+    DOCKING_ANOMALY = "docking_anomaly"
+    DOCKING_FAILED = "docking_failed"
+    DUCT_CLOGGED = "duct_clogged"
+    IMU_BIAS_HIGH = "imu_bias_high"
+    INCORRECT_SEMANTICS = "incorrect_semantics"
+    INCORRECT_TOEKICK = "incorrect_toekick"
+    LOW_CHARGE_DOCKING_FAILED = "low_charge_docking_failed"
+    MIRROR_DETECTED = "mirror_detected"
+    MOPPING_START = "mopping_start"
+    MOPPING_WHEEL_SLIP = "mopping_wheel_slip"
+    MOP_ROLL_JAMMED = "mop_roll_jammed"
+    MOP_ROLL_MISSING = "mop_roll_missing"
+    NETWORK_COMMAND = "network_command"
+    NEW_DOCK_DETECTION = "new_dock_detection"
+    PERIMETER_ANOMALY = "perimeter_anomaly"
+    PETWASTE_DETECTED = "petwaste_detected"
+    POINT_TO_CLEAN = "point_to_clean"
+    STALE_DOCK_REMOVAL = "stale_dock_removal"
+    SWEEPER_DISLODGED = "sweeper_dislodged"
+    TILTED = "tilted"
+    VACUUMING_START = "vacuuming_start"
+    VENT_DETECTED = "vent_detected"
+    VOICE_COMMAND = "voice_command"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -336,6 +433,8 @@ class RobotStatusCollectionModel(CollectionModel):
     voice_intent: (
         CuesTaskIntent | CuesGestureIntent | CuesRecordingIntent | str | None
     ) = None
+    point_to_clean_intent_kind: CuesPointToCleanIntentKind | str | None = None
+    brush_roll_jam_outcome: BrushRollJamOutcome | str | None = None
     time_until_idle_dock: timedelta | None = None
 
 
@@ -559,14 +658,17 @@ __all__ = [
     "AudioRecordingStateCollectionModel",
     "BagPassCollectionModel",
     "BinarySettingCollectionModel",
+    "BrushRollJamOutcome",
     "CollectionModel",
     "CoverageHistoryCollectionModel",
     "CoverageLineCollectionModel",
     "CoveragePlanCollectionModel",
+    "CoverageSessionOutcome",
     "CoverageTimeCollectionModel",
     "CuesGestureIntent",
     "CuesGestureStatus",
     "CuesIntentCategory",
+    "CuesPointToCleanIntentKind",
     "CuesRecordingIntent",
     "CuesTaskIntent",
     "CuesVoiceStatus",
@@ -593,10 +695,14 @@ __all__ = [
     "RecordingsCollectionModel",
     "RobotStatusCollectionModel",
     "RollingRecordingCollectionModel",
+    "RollingRecordingReason",
     "ScheduleEventCollectionModel",
+    "SessionCompletionKind",
+    "SessionStopReason",
     "SinkSummonLocationCollectionModel",
     "SinkSummonScheduleCollectionModel",
     "SshPermissionCollectionModel",
+    "StopReasonKind",
     "StructuredCollectionModel",
     "TimeZoneCollectionModel",
     "UpdateStateCollectionModel",
